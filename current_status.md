@@ -28,3 +28,20 @@
   1. Fix build foundation (AGP/dependency alignment).
   2. Replace template UI with a thin Neo-Markor shell (dashboard + drawer scaffold).
   3. Add initial implementation docs for repeatable test APK generation in cloud workflow.
+
+## Stack decisions captured in plan (v1)
+- Architecture: MVVM + Clean Architecture + Repository.
+- UI: Compose + Material 3 expressive.
+- Navigation: type-safe Navigation Compose (stable track recommended first).
+- DI: Koin.
+- Editor: BasicTextField/TextFieldState + custom visual transformation.
+- Reading mode: Markwon via AndroidView.
+- Storage: Okio + SAF/ContentResolver for scoped storage.
+- Settings: DataStore Preferences.
+- Frontmatter: Kaml.
+- Local media: Coil.
+- Optional indexing cache: Room.
+- Concurrency/state: Coroutines + StateFlow.
+
+## Recommendation note
+- Navigation Compose 3 is promising, but to minimize risk for first production iterations, use the stable Navigation Compose line with typed routes now and plan a controlled upgrade when Nav 3 is fully stable.
