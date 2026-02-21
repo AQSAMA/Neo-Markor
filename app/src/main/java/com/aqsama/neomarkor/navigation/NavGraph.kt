@@ -1,5 +1,6 @@
 package com.aqsama.neomarkor.navigation
 
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -12,7 +13,7 @@ sealed class Screen(val route: String) {
     object Dashboard : Screen("dashboard")
     object FileBrowser : Screen("file_browser")
     object Editor : Screen("editor/{filePath}") {
-        fun createRoute(filePath: String) = "editor/${filePath.replace("/", "|")}"
+        fun createRoute(filePath: String) = "editor/${Uri.encode(filePath)}"
     }
 }
 
@@ -40,7 +41,7 @@ fun NeoMarkorNavGraph(navController: NavHostController) {
         }
         composable(Screen.Editor.route) { backStackEntry ->
             val encodedPath = backStackEntry.arguments?.getString("filePath") ?: ""
-            val filePath = encodedPath.replace("|", "/")
+            val filePath = Uri.decode(encodedPath)
             EditorScreen(
                 filePath = filePath,
                 onNavigateBack = { navController.popBackStack() }
