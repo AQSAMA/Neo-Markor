@@ -18,4 +18,13 @@ interface FileRepository {
 
     /** Reads the content of a document URI using Okio. */
     suspend fun readFile(uriString: String): String
+
+    /** Writes [content] to the document URI using Okio (truncates first). */
+    suspend fun writeFile(uriString: String, content: String)
+
+    /**
+     * Creates a new file with [fileName] in the saved root directory, writes [initialContent]
+     * into it, and returns the new document URI string. Returns null if no root is saved.
+     */
+    suspend fun createFile(fileName: String, initialContent: String = ""): String?
 }

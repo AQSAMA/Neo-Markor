@@ -4,6 +4,7 @@ import com.aqsama.neomarkor.data.local.StoragePreferences
 import com.aqsama.neomarkor.data.repository.FileRepositoryImpl
 import com.aqsama.neomarkor.domain.repository.FileRepository
 import com.aqsama.neomarkor.presentation.viewmodel.DashboardViewModel
+import com.aqsama.neomarkor.presentation.viewmodel.EditorViewModel
 import com.aqsama.neomarkor.presentation.viewmodel.FileBrowserViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,4 +19,5 @@ val appModule = module {
     single<FileRepository> { FileRepositoryImpl(androidContext(), get(), get()) }
     viewModel { FileBrowserViewModel(get()) }
     viewModel { DashboardViewModel(get()) }
+    viewModel { params -> EditorViewModel(params.get(), get()) }
 }

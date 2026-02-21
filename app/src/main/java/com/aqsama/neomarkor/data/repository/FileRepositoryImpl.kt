@@ -8,12 +8,15 @@ import com.aqsama.neomarkor.data.local.StoragePreferences
 import com.aqsama.neomarkor.domain.model.FileNode
 import com.aqsama.neomarkor.domain.repository.FileRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okio.buffer
+import okio.sink
 import okio.source
 
 private val SUPPORTED_EXTENSIONS = setOf("md", "txt")
@@ -54,11 +57,35 @@ class FileRepositoryImpl(
         }
     }
 
-    override suspend fun readFile(uriString: String): String {
+    override suspend fun readFile(uriString: String): String = withContext(Dispatchers.IO) {
         val uri = Uri.parse(uriString)
-        return context.contentResolver.openInputStream(uri)?.use { stream ->
+        context.contentResolver.openInputStream(uri)?.use { stream ->
             stream.source().buffer().readUtf8()
         } ?: ""
+    }
+
+    override suspend fun writeFile(uriString: String, content: String) = withContext(Dispatchers.IO) {
+        val uri = Uri.parse(uriString)
+        // "wt" = write + truncate so existing content is fully replaced
+        context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
+            stream.sink().buffer().use { it.writeUtf8(content) }
+        }
+    }
+
+    override suspend fun createFile(fileName: String, initialContent: String): String? = withContext(Dispatchers.IO) {
+        val rootUriString = storagePreferences.observeRootDirectoryUri().first() ?: return@withContext null
+        val rootDoc = DocumentFile.fromTreeUri(context, Uri.parse(rootUriString)) ?: return@withContext null
+        val mimeType = if (fileName.endsWith(".md")) "text/markdown" else "text/plain"
+        val newDoc = rootDoc.createFile(mimeType, fileName) ?: return@withContext null
+        val newUriString = newDoc.uri.toString()
+        if (initialContent.isNotEmpty()) {
+            context.contentResolver.openOutputStream(newDoc.uri, "wt")?.use { stream ->
+                stream.sink().buffer().use { it.writeUtf8(initialContent) }
+            }
+        }
+        // Refresh so the new file appears in the tree immediately
+        _fileTree.value = scanDocumentTree(rootUriString)
+        newUriString
     }
 
     private fun scanDocumentTree(uriString: String): List<FileNode> {

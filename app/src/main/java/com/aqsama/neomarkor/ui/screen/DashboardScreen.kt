@@ -34,6 +34,11 @@ fun DashboardScreen(
     val recentFiles by viewModel.recentFiles.collectAsState()
     val hasDirectory by viewModel.hasDirectory.collectAsState()
 
+    // Navigate to the editor whenever a new note is successfully created
+    LaunchedEffect(Unit) {
+        viewModel.newNoteEvent.collect { uri -> onOpenEditor(uri) }
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -76,7 +81,7 @@ fun DashboardScreen(
             },
             floatingActionButton = {
                 ExtendedFloatingActionButton(
-                    onClick = { onOpenEditor("new_note") },
+                    onClick = { viewModel.createNewNote() },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     text = { Text("Quick Note") },
                     containerColor = MaterialTheme.colorScheme.primary,
