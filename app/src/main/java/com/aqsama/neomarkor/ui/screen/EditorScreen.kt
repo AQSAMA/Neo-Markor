@@ -1,5 +1,6 @@
 package com.aqsama.neomarkor.ui.screen
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -27,7 +28,15 @@ fun EditorScreen(
     onNavigateBack: () -> Unit,
 ) {
     val isNewNote = filePath == "new_note"
-    val fileName = if (isNewNote) "New Note" else filePath.substringAfterLast("/")
+    val fileName = when {
+        isNewNote -> "New Note"
+        filePath.startsWith("content://") ->
+            Uri.parse(filePath).lastPathSegment
+                ?.substringAfterLast("/")
+                ?.substringAfterLast(":")
+                ?: "File"
+        else -> filePath.substringAfterLast("/")
+    }
 
     var editorMode by remember { mutableStateOf(EditorMode.SOURCE) }
     var content by remember {
