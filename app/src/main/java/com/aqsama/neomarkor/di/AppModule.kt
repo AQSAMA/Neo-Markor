@@ -19,5 +19,5 @@ val appModule = module {
     single<FileRepository> { FileRepositoryImpl(androidContext(), get(), get()) }
     viewModel { FileBrowserViewModel(get()) }
     viewModel { DashboardViewModel(get()) }
-    viewModel { params -> EditorViewModel(params.get(), get()) }
+    viewModel { params -> EditorViewModel(params.get<String>(), get()) }
 }

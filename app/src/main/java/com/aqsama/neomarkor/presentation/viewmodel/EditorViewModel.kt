@@ -42,8 +42,14 @@ class EditorViewModel(
 
         if (!isNewNote) {
             viewModelScope.launch {
-                _content.value = fileRepository.readFile(fileUriString)
-                _isLoading.value = false
+                try {
+                    _content.value = fileRepository.readFile(fileUriString)
+                } catch (e: Exception) {
+                    _content.value = "# Error opening file\n\nThe file could not be loaded. Please go back and try again."
+                    android.util.Log.e("EditorViewModel", "readFile failed for $fileUriString", e)
+                } finally {
+                    _isLoading.value = false
+                }
             }
             viewModelScope.launch {
                 _saveFlow

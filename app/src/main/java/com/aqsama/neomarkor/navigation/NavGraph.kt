@@ -1,6 +1,6 @@
 package com.aqsama.neomarkor.navigation
 
-import android.net.Uri
+import android.util.Base64
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -13,7 +13,18 @@ sealed class Screen(val route: String) {
     object Dashboard : Screen("dashboard")
     object FileBrowser : Screen("file_browser")
     object Editor : Screen("editor/{filePath}") {
-        fun createRoute(filePath: String) = "editor/${Uri.encode(filePath)}"
+        /**
+         * Encode [filePath] with URL-safe Base64 so that SAF content:// URIs —
+         * which contain characters (:, /, %) that Navigation Compose decodes when
+         * extracting path arguments — survive the round-trip intact.
+         */
+        fun createRoute(filePath: String): String {
+            val encoded = Base64.encodeToString(
+                filePath.toByteArray(Charsets.UTF_8),
+                Base64.URL_SAFE or Base64.NO_WRAP,
+            )
+            return "editor/$encoded"
+        }
     }
 }
 
@@ -41,7 +52,16 @@ fun NeoMarkorNavGraph(navController: NavHostController) {
         }
         composable(Screen.Editor.route) { backStackEntry ->
             val encodedPath = backStackEntry.arguments?.getString("filePath") ?: ""
-            val filePath = Uri.decode(encodedPath)
+            val filePath = try {
+                if (encodedPath.isEmpty()) "" else {
+                    String(
+                        Base64.decode(encodedPath, Base64.URL_SAFE or Base64.NO_WRAP),
+                        Charsets.UTF_8,
+                    )
+                }
+            } catch (_: IllegalArgumentException) {
+                encodedPath
+            }
             EditorScreen(
                 filePath = filePath,
                 onNavigateBack = { navController.popBackStack() }
