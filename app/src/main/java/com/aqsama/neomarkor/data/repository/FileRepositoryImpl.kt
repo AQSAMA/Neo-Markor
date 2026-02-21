@@ -64,12 +64,13 @@ class FileRepositoryImpl(
         } ?: ""
     }
 
-    override suspend fun writeFile(uriString: String, content: String) = withContext(Dispatchers.IO) {
+    override suspend fun writeFile(uriString: String, content: String): Unit = withContext(Dispatchers.IO) {
         val uri = Uri.parse(uriString)
         // "wt" = write + truncate so existing content is fully replaced
         context.contentResolver.openOutputStream(uri, "wt")?.use { stream ->
             stream.sink().buffer().use { it.writeUtf8(content) }
         }
+        Unit
     }
 
     override suspend fun createFile(fileName: String, initialContent: String): String? = withContext(Dispatchers.IO) {
