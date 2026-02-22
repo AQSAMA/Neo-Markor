@@ -214,7 +214,9 @@ private fun FileTreeItem(
     val dropTargetModifier = if (file.isDirectory) {
         Modifier.dragAndDropTarget(
             shouldStartDragAndDrop = { event ->
-                event.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN)
+                event.toAndroidDragEvent()
+                    .clipDescription
+                    ?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true
             },
             target = dropTarget,
         )
