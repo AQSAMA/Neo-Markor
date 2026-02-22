@@ -27,4 +27,7 @@ interface FileRepository {
      * into it, and returns the new document URI string. Returns null if no root is saved.
      */
     suspend fun createFile(fileName: String, initialContent: String = ""): String?
+
+    /** Moves an existing document URI into a target directory URI using SAF. */
+    suspend fun moveNode(sourceUriString: String, sourceParentUriString: String, targetDirectoryUriString: String): Boolean
 }

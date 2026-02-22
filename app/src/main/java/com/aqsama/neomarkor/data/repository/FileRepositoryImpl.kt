@@ -3,6 +3,7 @@ package com.aqsama.neomarkor.data.repository
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.aqsama.neomarkor.data.local.StoragePreferences
 import com.aqsama.neomarkor.domain.model.FileNode
@@ -87,6 +88,31 @@ class FileRepositoryImpl(
         // Refresh so the new file appears in the tree immediately
         _fileTree.value = scanDocumentTree(rootUriString)
         newUriString
+    }
+
+    override suspend fun moveNode(
+        sourceUriString: String,
+        sourceParentUriString: String,
+        targetDirectoryUriString: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (sourceUriString == targetDirectoryUriString || sourceParentUriString == targetDirectoryUriString) {
+            return@withContext false
+        }
+        val moved = try {
+            DocumentsContract.moveDocument(
+                context.contentResolver,
+                Uri.parse(sourceUriString),
+                Uri.parse(sourceParentUriString),
+                Uri.parse(targetDirectoryUriString)
+            ) != null
+        } catch (_: Exception) {
+            false
+        }
+        if (moved) {
+            val rootUriString = storagePreferences.observeRootDirectoryUri().first()
+            if (rootUriString != null) _fileTree.value = scanDocumentTree(rootUriString)
+        }
+        moved
     }
 
     private fun scanDocumentTree(uriString: String): List<FileNode> {
