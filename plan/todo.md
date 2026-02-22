@@ -42,6 +42,15 @@
 - Added an explicit technology stack section so implementation phases reference concrete architectural/library choices.
 - Documented one key recommendation: prefer stable Navigation Compose typed-route setup now, then upgrade to Navigation 3 when stable for production.
 
+## Iteration: Move File Tree into Side Panel (2026-02-22)
+
+### Checklist
+- [ ] Review current Dashboard/FileBrowser/navigation flow and identify minimal edits.
+- [ ] Move recursive file tree rendering into the Dashboard side panel with folder expand/collapse and indentation.
+- [ ] Preserve file-open behavior so clicking a file still opens Editor.
+- [ ] Remove standalone FileBrowser route/screen wiring from navigation.
+- [ ] Run targeted validation (where environment allows), capture UI screenshot, and update status/review notes.
+
 ## Phase 1 Implementation Review (2026-02-20)
 ### Changes Made
 1. **Fixed `gradle/libs.versions.toml`**: Replaced broken AGP 9.0.0 with 8.7.0; added navigationCompose, lifecycleViewmodelCompose, koin, datastore, materialIconsExtended, room, ksp, kotlinxSerializationJson versions and libraries.
@@ -65,4 +74,3 @@
 
 ### Build Status
 The assembleDebug build fails due to network restrictions in the sandboxed CI environment: `dl.google.com` (the actual content server for Google Maven / `maven.google.com`) is blocked by the eBPF-based firewall. AGP 8.7.0 cannot be downloaded. This is an infrastructure limitation — all code changes are correct and complete.
-
