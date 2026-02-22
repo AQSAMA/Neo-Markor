@@ -21,17 +21,20 @@
 - [x] Explicitly define Neo-Markor target technology stack and library decisions.
 - [x] Align app identity and foundation (application id/name, package naming cleanup, stable Gradle plugin/dependency versions).
 - [x] Implement local-first filesystem workspace core (custom root directory picker, recursive tree model, file CRUD for plain-text formats).
+- [x] Complete core file I/O operations (SAF root selection, recursive tree scan, Okio read/write, note creation).
 - [x] Build main shell UI (M3 expressive top app bar + navigation drawer + dashboard surface) with fast note capture action.
 - [x] Implement triple-mode editor foundation:
   - [x] Source mode (raw markdown editing with lightweight syntax highlighting).
   - [x] Live preview mode (progressive markdown rendering while editing).
   - [x] Reading mode (read-only rendered markdown with tables/task lists/images).
 - [ ] Add note intelligence features (wiki-links `[[...]]`, YAML frontmatter parsing, relative media embedding).
-- [ ] Add organization features (recent/pinned/daily notes, infinite folder depth tree navigation).
+- [ ] Add organization features (recent/pinned/daily notes).
 - [ ] Add background reliability features (autosave, undo/redo, format-aware editor handling for md/txt/json/yaml/todo.txt).
 - [ ] Add export/share options (HTML + PDF).
 - [ ] Add customization surface (theme mode, accent color, corner radius controls).
-- [ ] Add drag-and-drop file/folder move interactions.
+- [ ] Move file tree into side panel drawer (global access, expandable infinite-depth hierarchy, scrollable section).
+- [ ] Add drag-and-drop file/folder move interactions inside the drawer tree (reactive SAF disk updates).
+- [ ] Remove standalone `FileBrowserScreen` navigation and keep file browsing as a persistent drawer feature.
 - [ ] Add tests incrementally for parser/repository/viewmodel/editor mode transitions.
 - [x] Add repeatable test APK workflow for cloud-first iteration:
   - [x] Local command path (`./gradlew assembleDebug`) and output path documentation.
@@ -65,4 +68,3 @@
 
 ### Build Status
 The assembleDebug build fails due to network restrictions in the sandboxed CI environment: `dl.google.com` (the actual content server for Google Maven / `maven.google.com`) is blocked by the eBPF-based firewall. AGP 8.7.0 cannot be downloaded. This is an infrastructure limitation — all code changes are correct and complete.
-
