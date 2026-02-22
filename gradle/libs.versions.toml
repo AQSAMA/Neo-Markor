@@ -16,6 +16,8 @@ materialIconsExtended = "1.7.8"
 room = "2.7.0"
 ksp = "2.0.21-1.0.28"
 kotlinxSerializationJson = "1.7.3"
+okio = "3.9.0"
+documentfile = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -42,6 +44,8 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = "koin" }
 koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koin" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+okio = { group = "com.squareup.okio", name = "okio", version.ref = "okio" }
+androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -20,7 +20,7 @@
 - [x] Confirm current build/test baseline and record blockers.
 - [x] Explicitly define Neo-Markor target technology stack and library decisions.
 - [x] Align app identity and foundation (application id/name, package naming cleanup, stable Gradle plugin/dependency versions).
-- [ ] Implement local-first filesystem workspace core (custom root directory picker, recursive tree model, file CRUD for plain-text formats).
+- [x] Implement local-first filesystem workspace core (custom root directory picker, recursive tree model, file CRUD for plain-text formats).
 - [x] Build main shell UI (M3 expressive top app bar + navigation drawer + dashboard surface) with fast note capture action.
 - [x] Implement triple-mode editor foundation:
   - [x] Source mode (raw markdown editing with lightweight syntax highlighting).
@@ -33,9 +33,9 @@
 - [ ] Add customization surface (theme mode, accent color, corner radius controls).
 - [ ] Add drag-and-drop file/folder move interactions.
 - [ ] Add tests incrementally for parser/repository/viewmodel/editor mode transitions.
-- [ ] Add repeatable test APK workflow for cloud-first iteration:
-  - [ ] Local command path (`./gradlew assembleDebug`) and output path documentation.
-  - [ ] PR/CI artifact build workflow to download installable APK each iteration.
+- [x] Add repeatable test APK workflow for cloud-first iteration:
+  - [x] Local command path (`./gradlew assembleDebug`) and output path documentation.
+  - [x] PR/CI artifact build workflow to download installable APK each iteration.
 - [ ] Final validation pass (targeted tests + assembleDebug + manual UI verification screenshots).
 
 ## Review

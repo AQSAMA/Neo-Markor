@@ -17,6 +17,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aqsama.neomarkor.presentation.viewmodel.EditorViewModel
+import org.koin.androidx.compose.koinViewModel
+import org.koin.core.parameter.parametersOf
 
 enum class EditorMode { SOURCE, PREVIEW, READING }
 
@@ -25,28 +28,35 @@ enum class EditorMode { SOURCE, PREVIEW, READING }
 fun EditorScreen(
     filePath: String,
     onNavigateBack: () -> Unit,
+    viewModel: EditorViewModel = koinViewModel { parametersOf(filePath) },
 ) {
-    val isNewNote = filePath == "new_note"
-    val fileName = if (isNewNote) "New Note" else filePath.substringAfterLast("/")
+    val content by viewModel.content.collectAsState()
+    val fileName by viewModel.fileName.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val isSaving by viewModel.isSaving.collectAsState()
 
     var editorMode by remember { mutableStateOf(EditorMode.SOURCE) }
-    var content by remember {
-        mutableStateOf(
-            if (isNewNote) "# New Note\n\n"
-            else "# $fileName\n\nStart writing your markdown here...\n\n## Section\n\nSome content with **bold** and *italic* text.\n\n- Item 1\n- Item 2\n- [ ] Task item\n"
-        )
-    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = fileName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = fileName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                        if (isSaving) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -54,7 +64,7 @@ fun EditorScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {}) {
+                    IconButton(onClick = { viewModel.saveNow() }) {
                         Icon(Icons.Default.Save, contentDescription = "Save")
                     }
                     IconButton(onClick = {}) {
@@ -73,15 +83,20 @@ fun EditorScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
+            contentAlignment = Alignment.Center,
         ) {
-            when (editorMode) {
-                EditorMode.SOURCE -> SourceEditor(
-                    content = content,
-                    onContentChange = { content = it }
-                )
-                EditorMode.PREVIEW -> LivePreview(content = content)
-                EditorMode.READING -> ReadingMode(content = content)
+            if (isLoading) {
+                CircularProgressIndicator()
+            } else {
+                when (editorMode) {
+                    EditorMode.SOURCE -> SourceEditor(
+                        content = content,
+                        onContentChange = { viewModel.onContentChanged(it) }
+                    )
+                    EditorMode.PREVIEW -> LivePreview(content = content)
+                    EditorMode.READING -> ReadingMode(content = content)
+                }
             }
         }
     }

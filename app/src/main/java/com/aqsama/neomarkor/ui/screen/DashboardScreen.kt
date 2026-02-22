@@ -17,32 +17,26 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.aqsama.neomarkor.domain.model.FileNode
+import com.aqsama.neomarkor.presentation.viewmodel.DashboardViewModel
 import kotlinx.coroutines.launch
-
-data class RecentFile(
-    val name: String,
-    val path: String,
-    val preview: String,
-    val isNote: Boolean = false,
-)
+import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onOpenFileBrowser: () -> Unit,
     onOpenEditor: (String) -> Unit,
+    viewModel: DashboardViewModel = koinViewModel(),
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val recentFiles by viewModel.recentFiles.collectAsState()
+    val hasDirectory by viewModel.hasDirectory.collectAsState()
 
-    val recentFiles = remember {
-        listOf(
-            RecentFile("Meeting Notes", "/notes/meeting.md", "Discussed Q1 roadmap and team OKRs...", true),
-            RecentFile("README.md", "/projects/app/README.md", "# Neo-Markor\nA modern markdown editor...", false),
-            RecentFile("Daily Journal", "/notes/journal/2026-02-20.md", "Today was productive. Finished the...", true),
-            RecentFile("todo.txt", "/notes/todo.txt", "[ ] Fix build [ ] Add navigation", false),
-            RecentFile("Ideas", "/notes/ideas.md", "## Feature ideas\n- Quick capture widget\n- Wiki links", true),
-        )
+    // Navigate to the editor whenever a new note is successfully created
+    LaunchedEffect(Unit) {
+        viewModel.newNoteEvent.collect { uri -> onOpenEditor(uri) }
     }
 
     ModalNavigationDrawer(
@@ -87,7 +81,7 @@ fun DashboardScreen(
             },
             floatingActionButton = {
                 ExtendedFloatingActionButton(
-                    onClick = { onOpenEditor("new_note") },
+                    onClick = { viewModel.createNewNote() },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     text = { Text("Quick Note") },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -110,11 +104,26 @@ fun DashboardScreen(
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                 }
-                items(recentFiles) { file ->
-                    RecentFileCard(
-                        file = file,
-                        onClick = { onOpenEditor(file.path) }
-                    )
+                if (!hasDirectory) {
+                    item {
+                        NoWorkspaceCard(onOpenFileBrowser = onOpenFileBrowser)
+                    }
+                } else if (recentFiles.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No files found in your workspace.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                } else {
+                    items(recentFiles) { file ->
+                        RecentFileCard(
+                            file = file,
+                            onClick = { onOpenEditor(file.uriString) }
+                        )
+                    }
                 }
                 item { Spacer(modifier = Modifier.height(80.dp)) }
             }
@@ -123,8 +132,52 @@ fun DashboardScreen(
 }
 
 @Composable
+private fun NoWorkspaceCard(onOpenFileBrowser: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpenFileBrowser),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.FolderOpen,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "No workspace selected",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Tap to open File Browser and choose a directory.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun RecentFileCard(
-    file: RecentFile,
+    file: FileNode,
     onClick: () -> Unit,
 ) {
     Card(
@@ -149,7 +202,7 @@ private fun RecentFileCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = if (file.isNote) Icons.Default.Description else Icons.Default.Article,
+                    imageVector = if (file.name.endsWith(".md")) Icons.Default.Description else Icons.Default.Article,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(20.dp)
@@ -162,14 +215,6 @@ private fun RecentFileCard(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = file.preview,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
