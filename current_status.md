@@ -14,6 +14,7 @@
 - **UI pipeline (active):**
   - `FileBrowserScreen` renders repository-driven `FileNode` trees.
   - Recursive tree rows keep URI-keyed expand/collapse state and support compose drag-and-drop source/target behavior.
+  - Guardrail: drag-and-drop types come from `androidx.compose.ui.draganddrop` and require `ExperimentalFoundationApi` opt-in.
   - `EditorScreen` opens file URIs and uses repository read/write methods for note editing.
 - **State pipeline (active):**
   - `FileBrowserViewModel` exposes `fileTree` and `directoryUri` as `StateFlow`.
