@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.aqsama.neomarkor.data.local.StoragePreferences
 import com.aqsama.neomarkor.domain.model.FileNode
@@ -19,8 +20,10 @@ import kotlinx.coroutines.withContext
 import okio.buffer
 import okio.sink
 import okio.source
+import java.io.FileNotFoundException
 
 private val SUPPORTED_EXTENSIONS = setOf("md", "txt")
+private const val TAG = "FileRepositoryImpl"
 
 class FileRepositoryImpl(
     private val context: Context,
@@ -105,7 +108,14 @@ class FileRepositoryImpl(
                 Uri.parse(sourceParentUriString),
                 Uri.parse(targetDirectoryUriString)
             ) != null
-        } catch (_: Exception) {
+        } catch (error: SecurityException) {
+            Log.w(TAG, "SAF move denied by permissions.", error)
+            false
+        } catch (error: IllegalArgumentException) {
+            Log.w(TAG, "SAF move failed due to invalid URI arguments.", error)
+            false
+        } catch (error: FileNotFoundException) {
+            Log.w(TAG, "SAF move failed because document was not found.", error)
             false
         }
         if (moved) {

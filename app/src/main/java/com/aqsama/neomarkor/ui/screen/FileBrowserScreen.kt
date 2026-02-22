@@ -27,6 +27,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aqsama.neomarkor.domain.model.FileNode
 import com.aqsama.neomarkor.presentation.viewmodel.FileBrowserViewModel
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +41,7 @@ fun FileBrowserScreen(
     val fileTree by viewModel.fileTree.collectAsState()
     val directoryUri by viewModel.directoryUri.collectAsState()
     val expandedMap = remember { mutableStateMapOf<String, Boolean>() }
+    val descendantUriMap = remember(fileTree) { buildDescendantUriMap(fileTree) }
 
     val dirPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -101,6 +104,9 @@ fun FileBrowserScreen(
                             onToggleExpanded = { uri -> expandedMap[uri] = !(expandedMap[uri] == true) },
                             onForceExpanded = { uri -> expandedMap[uri] = true },
                             onMoveNode = viewModel::moveNode,
+                            isDescendantTarget = { sourceUri, targetUri ->
+                                descendantUriMap[sourceUri]?.contains(targetUri) == true
+                            },
                         )
                     }
                 }
@@ -152,6 +158,7 @@ private fun FileTreeItem(
     onToggleExpanded: (String) -> Unit,
     onForceExpanded: (String) -> Unit,
     onMoveNode: (sourceUriString: String, sourceParentUriString: String, targetDirectoryUriString: String) -> Unit,
+    isDescendantTarget: (sourceUriString: String, targetDirectoryUriString: String) -> Boolean,
 ) {
     val expanded = isExpanded(file.uriString)
     val rowColor = if (file.isDirectory) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
@@ -173,15 +180,17 @@ private fun FileTreeItem(
         .then(
             if (file.isDirectory) {
                 Modifier.dragAndDropTarget(
-                    shouldStartDragAndDrop = { true },
+                    shouldStartDragAndDrop = { event ->
+                        decodeDragPayload(event.toAndroidDragEvent().clipData?.getItemAt(0)?.text?.toString()) != null
+                    },
                     target = remember(file.uriString) {
                         object : DragAndDropTarget {
                             override fun onDrop(event: androidx.compose.ui.draganddrop.DragAndDropEvent): Boolean {
-                                onForceExpanded(file.uriString)
                                 val payload = decodeDragPayload(
                                     event.toAndroidDragEvent().clipData?.getItemAt(0)?.text?.toString()
                                 ) ?: return false
-                                if (!canDropOnTarget(payload, file.uriString)) return false
+                                if (!canDropOnTarget(payload, file.uriString, isDescendantTarget)) return false
+                                onForceExpanded(file.uriString)
                                 onMoveNode(payload.sourceUriString, payload.sourceParentUriString, file.uriString)
                                 return true
                             }
@@ -257,12 +266,14 @@ private fun FileTreeItem(
                     onToggleExpanded = onToggleExpanded,
                     onForceExpanded = onForceExpanded,
                     onMoveNode = onMoveNode,
+                    isDescendantTarget = isDescendantTarget,
                 )
             }
         }
     }
 }
 
+@Serializable
 internal data class DragNodePayload(
     val sourceUriString: String,
     val sourceParentUriString: String,
@@ -273,18 +284,46 @@ internal fun encodeDragPayload(
     sourceUriString: String,
     sourceParentUriString: String,
     sourceIsDirectory: Boolean
-): String = listOf(sourceUriString, sourceParentUriString, sourceIsDirectory.toString()).joinToString("\n")
+): String = Json.encodeToString(
+    DragNodePayload(
+        sourceUriString = sourceUriString,
+        sourceParentUriString = sourceParentUriString,
+        sourceIsDirectory = sourceIsDirectory
+    )
+)
 
 internal fun decodeDragPayload(raw: String?): DragNodePayload? {
     if (raw.isNullOrBlank()) return null
-    val parts = raw.split('\n')
-    if (parts.size < 3) return null
-    return DragNodePayload(parts[0], parts[1], parts[2].toBooleanStrictOrNull() ?: return null)
+    return runCatching { Json.decodeFromString<DragNodePayload>(raw) }.getOrNull()
 }
 
 internal fun canDropOnTarget(payload: DragNodePayload, targetDirectoryUriString: String): Boolean {
+    return canDropOnTarget(payload, targetDirectoryUriString) { _, _ -> false }
+}
+
+internal fun canDropOnTarget(
+    payload: DragNodePayload,
+    targetDirectoryUriString: String,
+    isDescendantTarget: (sourceUriString: String, targetDirectoryUriString: String) -> Boolean
+): Boolean {
     if (payload.sourceUriString == targetDirectoryUriString) return false
     if (payload.sourceParentUriString == targetDirectoryUriString) return false
-    if (payload.sourceIsDirectory && targetDirectoryUriString.startsWith(payload.sourceUriString)) return false
+    if (payload.sourceIsDirectory && isDescendantTarget(payload.sourceUriString, targetDirectoryUriString)) return false
     return true
+}
+
+internal fun buildDescendantUriMap(nodes: List<FileNode>): Map<String, Set<String>> {
+    val map = mutableMapOf<String, Set<String>>()
+    nodes.forEach { node -> collectDescendantUris(node, map) }
+    return map
+}
+
+private fun collectDescendantUris(node: FileNode, map: MutableMap<String, Set<String>>): Set<String> {
+    val descendants = mutableSetOf<String>()
+    node.children.forEach { child ->
+        descendants += child.uriString
+        descendants += collectDescendantUris(child, map)
+    }
+    map[node.uriString] = descendants
+    return descendants
 }

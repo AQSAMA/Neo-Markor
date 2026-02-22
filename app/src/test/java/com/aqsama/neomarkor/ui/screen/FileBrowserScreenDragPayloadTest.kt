@@ -1,5 +1,6 @@
 package com.aqsama.neomarkor.ui.screen
 
+import com.aqsama.neomarkor.domain.model.FileNode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -32,14 +33,40 @@ class FileBrowserScreenDragPayloadTest {
     }
 
     @Test
-    fun `cannot drop directory into its own descendants`() {
+    fun `drop validation allows non identical targets`() {
         val payload = DragNodePayload(
             sourceUriString = "content://tree/root/dir",
             sourceParentUriString = "content://tree/root",
             sourceIsDirectory = true
         )
 
-        assertFalse(canDropOnTarget(payload, "content://tree/root/dir/child"))
+        assertTrue(canDropOnTarget(payload, "content://tree/root/dir2"))
         assertTrue(canDropOnTarget(payload, "content://tree/root/other"))
+    }
+
+    @Test
+    fun `directory cannot be moved into descendant based on tree map`() {
+        val folderUri = "content://com.android.externalstorage.documents/tree/primary%3ANotes/document/primary%3ANotes%2Ffolder"
+        val childUri = "content://com.android.externalstorage.documents/tree/primary%3ANotes/document/primary%3ANotes%2Ffolder%2Fchild"
+        val tree = listOf(
+            FileNode(
+                name = "folder",
+                uriString = folderUri,
+                isDirectory = true,
+                children = listOf(
+                    FileNode(name = "child", uriString = childUri, isDirectory = true)
+                )
+            )
+        )
+        val descendants = buildDescendantUriMap(tree)
+        val payload = DragNodePayload(
+            sourceUriString = folderUri,
+            sourceParentUriString = "content://com.android.externalstorage.documents/tree/primary%3ANotes/document/primary%3ANotes",
+            sourceIsDirectory = true
+        )
+
+        assertFalse(canDropOnTarget(payload, childUri) { source, target ->
+            descendants[source]?.contains(target) == true
+        })
     }
 }
