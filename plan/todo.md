@@ -26,12 +26,14 @@
   - [x] Source mode (raw markdown editing with lightweight syntax highlighting).
   - [x] Live preview mode (progressive markdown rendering while editing).
   - [x] Reading mode (read-only rendered markdown with tables/task lists/images).
+- [x] File I/O operations via Okio + SAF (read, write, create, move via DocumentsContract).
+- [x] Infinite folder depth tree navigation — hierarchical expandable/collapsible file tree in `FileBrowserScreen`.
+- [x] Drag-and-drop file/folder move interactions — long-press to drag, drop onto folder, SAF move via `DocumentsContract.moveDocument()`.
 - [ ] Add note intelligence features (wiki-links `[[...]]`, YAML frontmatter parsing, relative media embedding).
-- [ ] Add organization features (recent/pinned/daily notes, infinite folder depth tree navigation).
+- [ ] Add organization features (recent/pinned/daily notes).
 - [ ] Add background reliability features (autosave, undo/redo, format-aware editor handling for md/txt/json/yaml/todo.txt).
 - [ ] Add export/share options (HTML + PDF).
 - [ ] Add customization surface (theme mode, accent color, corner radius controls).
-- [ ] Add drag-and-drop file/folder move interactions.
 - [ ] Add tests incrementally for parser/repository/viewmodel/editor mode transitions.
 - [x] Add repeatable test APK workflow for cloud-first iteration:
   - [x] Local command path (`./gradlew assembleDebug`) and output path documentation.

@@ -1,9 +1,16 @@
 package com.aqsama.neomarkor.ui.screen
 
+import android.content.ClipData
+import android.content.ClipDescription
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.draganddrop.dragAndDropSource
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,12 +21,32 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.DragAndDropTransferData
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aqsama.neomarkor.domain.model.FileNode
 import com.aqsama.neomarkor.presentation.viewmodel.FileBrowserViewModel
 import org.koin.androidx.compose.koinViewModel
+
+/** Separator used to pack source URI + parent URI into a single ClipData text item. */
+private const val DND_SEPARATOR = "\u001F"
+
+/**
+ * Extracts (sourceUri, sourceParentUri) from a drag-and-drop [event].
+ * Returns null if the ClipData is missing or malformed.
+ */
+private fun parseDragEvent(event: DragAndDropEvent): Pair<String, String>? {
+    val text = event.toAndroidDragEvent()
+        .clipData?.getItemAt(0)?.text?.toString() ?: return null
+    val parts = text.split(DND_SEPARATOR)
+    val sourceUri = parts.getOrNull(0)?.takeIf { it.isNotEmpty() } ?: return null
+    val sourceParentUri = parts.getOrNull(1)?.takeIf { it.isNotEmpty() } ?: return null
+    return sourceUri to sourceParentUri
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +113,10 @@ fun FileBrowserScreen(
                         FileTreeItem(
                             file = file,
                             depth = 0,
-                            onOpenEditor = onOpenEditor
+                            onOpenEditor = onOpenEditor,
+                            onMoveNode = { sourceUri, sourceParentUri, targetParentUri ->
+                                viewModel.moveNode(sourceUri, sourceParentUri, targetParentUri)
+                            },
                         )
                     }
                 }
@@ -128,27 +158,91 @@ private fun NoDirPlaceholder(modifier: Modifier = Modifier, onPickDirectory: () 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileTreeItem(
     file: FileNode,
     depth: Int,
     onOpenEditor: (String) -> Unit,
+    onMoveNode: (sourceUri: String, sourceParentUri: String, targetParentUri: String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    // True while a drag is hovering over this folder.
+    val isDropTarget = remember { mutableStateOf(false) }
+
+    // Stable drop-target object; captures isDropTarget by reference so callbacks update UI.
+    val dropTarget = remember(file.uriString) {
+        object : DragAndDropTarget {
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                isDropTarget.value = false
+                val (sourceUri, sourceParentUri) = parseDragEvent(event) ?: return false
+                // Prevent dropping a node onto itself or into its current parent.
+                // Note: moving a folder into one of its own descendants is rejected by the
+                // SAF provider (DocumentsContract.moveDocument returns null), so we rely on
+                // that graceful failure rather than walking the full subtree here.
+                if (sourceUri == file.uriString || sourceParentUri == file.uriString) return false
+                onMoveNode(sourceUri, sourceParentUri, file.uriString)
+                return true
+            }
+
+            override fun onEntered(event: DragAndDropEvent) { isDropTarget.value = true }
+            override fun onExited(event: DragAndDropEvent) { isDropTarget.value = false }
+            override fun onEnded(event: DragAndDropEvent) { isDropTarget.value = false }
+        }
+    }
+
+    // Drag-source modifier: long-press starts a drag carrying the node's URI and parent URI.
+    // Keyed on the URIs so it is only recreated when the node identity changes.
+    val dragSourceModifier = remember(file.uriString, file.parentUriString) {
+        Modifier.dragAndDropSource {
+            detectTapGestures(
+                onLongPress = {
+                    startTransfer(
+                        DragAndDropTransferData(
+                            clipData = ClipData.newPlainText(
+                                "neomarkor_node",
+                                "${file.uriString}$DND_SEPARATOR${file.parentUriString ?: ""}",
+                            ),
+                        ),
+                    )
+                },
+            )
+        }
+    }
+
+    // Drop-target modifier applied only to directory nodes.
+    val dropTargetModifier = if (file.isDirectory) {
+        Modifier.dragAndDropTarget(
+            shouldStartDragAndDrop = { event ->
+                event.mimeTypes().contains(ClipDescription.MIMETYPE_TEXT_PLAIN)
+            },
+            target = dropTarget,
+        )
+    } else {
+        Modifier
+    }
 
     Column {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(dragSourceModifier)
+                .then(dropTargetModifier)
                 .clickable {
                     if (file.isDirectory) expanded = !expanded
                     else onOpenEditor(file.uriString)
                 },
             shape = RoundedCornerShape(8.dp),
-            color = if (file.isDirectory)
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            else
-                MaterialTheme.colorScheme.surface,
+            color = when {
+                isDropTarget.value -> MaterialTheme.colorScheme.primaryContainer
+                file.isDirectory -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                else -> MaterialTheme.colorScheme.surface
+            },
+            border = if (isDropTarget.value) {
+                BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            } else {
+                null
+            },
         ) {
             Row(
                 modifier = Modifier
@@ -198,7 +292,8 @@ private fun FileTreeItem(
                 FileTreeItem(
                     file = child,
                     depth = depth + 1,
-                    onOpenEditor = onOpenEditor
+                    onOpenEditor = onOpenEditor,
+                    onMoveNode = onMoveNode,
                 )
             }
         }

@@ -27,4 +27,14 @@ interface FileRepository {
      * into it, and returns the new document URI string. Returns null if no root is saved.
      */
     suspend fun createFile(fileName: String, initialContent: String = ""): String?
+    /**
+     * Moves [sourceUriString] (currently a child of [sourceParentUriString]) into
+     * [targetParentUriString] using SAF's [android.provider.DocumentsContract.moveDocument].
+     * Returns `true` on success, `false` if the provider reports failure.
+     */
+    suspend fun moveNode(
+        sourceUriString: String,
+        sourceParentUriString: String,
+        targetParentUriString: String,
+    ): Boolean
 }

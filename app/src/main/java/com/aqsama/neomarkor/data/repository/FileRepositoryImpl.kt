@@ -3,6 +3,7 @@ package com.aqsama.neomarkor.data.repository
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.aqsama.neomarkor.data.local.StoragePreferences
 import com.aqsama.neomarkor.domain.model.FileNode
@@ -89,13 +90,41 @@ class FileRepositoryImpl(
         newUriString
     }
 
+    override suspend fun moveNode(
+        sourceUriString: String,
+        sourceParentUriString: String,
+        targetParentUriString: String,
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val moved = DocumentsContract.moveDocument(
+                context.contentResolver,
+                Uri.parse(sourceUriString),
+                Uri.parse(sourceParentUriString),
+                Uri.parse(targetParentUriString),
+            )
+            if (moved != null) {
+                refreshFileTree()
+                true
+            } else {
+                false
+            }
+        } catch (_: UnsupportedOperationException) {
+            false
+        } catch (_: SecurityException) {
+            false
+        } catch (_: IllegalArgumentException) {
+            false
+        }
+    }
+
     private fun scanDocumentTree(uriString: String): List<FileNode> {
         val uri = Uri.parse(uriString)
         val rootDocument = DocumentFile.fromTreeUri(context, uri) ?: return emptyList()
-        return buildChildren(rootDocument)
+        // Root-level nodes have the workspace directory itself as their parent.
+        return buildChildren(rootDocument, parentUri = rootDocument.uri.toString())
     }
 
-    private fun buildChildren(directory: DocumentFile): List<FileNode> =
+    private fun buildChildren(directory: DocumentFile, parentUri: String? = null): List<FileNode> =
         directory.listFiles()
             .mapNotNull { doc ->
                 val name = doc.name ?: return@mapNotNull null
@@ -104,13 +133,15 @@ class FileRepositoryImpl(
                         name = name,
                         uriString = doc.uri.toString(),
                         isDirectory = true,
-                        children = buildChildren(doc),
+                        parentUriString = parentUri,
+                        children = buildChildren(doc, parentUri = doc.uri.toString()),
                     )
                     doc.isFile && name.contains('.') && name.substringAfterLast('.').lowercase() in SUPPORTED_EXTENSIONS ->
                         FileNode(
                             name = name,
                             uriString = doc.uri.toString(),
                             isDirectory = false,
+                            parentUriString = parentUri,
                         )
                     else -> null
                 }

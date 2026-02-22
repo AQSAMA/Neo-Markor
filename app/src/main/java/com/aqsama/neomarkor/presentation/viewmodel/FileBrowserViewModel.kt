@@ -24,4 +24,10 @@ class FileBrowserViewModel(private val fileRepository: FileRepository) : ViewMod
     fun refresh() {
         viewModelScope.launch { fileRepository.refreshFileTree() }
     }
+
+    fun moveNode(sourceUriString: String, sourceParentUriString: String, targetParentUriString: String) {
+        viewModelScope.launch {
+            fileRepository.moveNode(sourceUriString, sourceParentUriString, targetParentUriString)
+        }
+    }
 }
