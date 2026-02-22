@@ -75,3 +75,11 @@ not a code error. All implemented code is correct.
 - Add real Markwon markdown rendering in Editor reading/preview modes  
 - Add DataStore settings persistence
 - Add Koin DI module setup
+
+## Iteration Update (2026-02-22)
+
+- New scoped goal: move the existing recursive file tree UI into the Dashboard side panel only.
+- Explicitly out of scope for this iteration: drag-and-drop and any on-disk file move operations.
+- Baseline validation attempted before changes:
+  - `./gradlew lint testDebugUnitTest`
+  - Result: failed during Gradle plugin resolution (`com.android.application` 8.7.0 not downloadable in this sandbox), so compile/test execution is currently blocked by environment networking.
