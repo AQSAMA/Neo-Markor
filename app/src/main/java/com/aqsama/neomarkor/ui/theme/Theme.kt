@@ -8,6 +8,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val LightColorScheme = lightColorScheme(
@@ -38,12 +39,23 @@ private val DarkColorScheme = darkColorScheme(
     outline = NeoOutlineDark,
 )
 
+/**
+ * @param themeMode 0 = System, 1 = Light, 2 = Dark
+ * @param accentColorArgb Custom accent color ARGB int, or 0 for default palette.
+ */
 @Composable
 fun NeoMarkorTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: Int = 0,
     dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
+    accentColorArgb: Int = 0,
+    content: @Composable () -> Unit,
 ) {
+    val darkTheme = when (themeMode) {
+        1 -> false
+        2 -> true
+        else -> isSystemInDarkTheme()
+    }
+
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
@@ -51,10 +63,16 @@ fun NeoMarkorTheme(
         }
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
+    }.let { scheme ->
+        if (accentColorArgb != 0) {
+            val accent = Color(accentColorArgb)
+            scheme.copy(primary = accent, primaryContainer = accent.copy(alpha = 0.2f))
+        } else scheme
     }
+
     MaterialTheme(
         colorScheme = colorScheme,
         typography = NeoMarkorTypography,
-        content = content
+        content = content,
     )
 }
