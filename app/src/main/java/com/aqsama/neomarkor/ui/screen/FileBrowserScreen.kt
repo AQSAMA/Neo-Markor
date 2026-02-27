@@ -3,7 +3,9 @@ package com.aqsama.neomarkor.ui.screen
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,10 +33,42 @@ fun FileBrowserScreen(
     val fileTree by viewModel.fileTree.collectAsState()
     val directoryUri by viewModel.directoryUri.collectAsState()
 
+    var showNewFolderDialog by remember { mutableStateOf(false) }
+
     val dirPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
         if (uri != null) viewModel.setDirectory(uri.toString())
+    }
+
+    // New Folder dialog
+    if (showNewFolderDialog) {
+        var folderName by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showNewFolderDialog = false },
+            title = { Text("New Folder") },
+            text = {
+                OutlinedTextField(
+                    value = folderName,
+                    onValueChange = { folderName = it },
+                    label = { Text("Folder name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (folderName.isNotBlank()) {
+                            viewModel.createFolder(folderName.trim())
+                            showNewFolderDialog = false
+                        }
+                    }
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewFolderDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 
     Scaffold(
@@ -47,6 +81,9 @@ fun FileBrowserScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showNewFolderDialog = true }) {
+                        Icon(Icons.Default.CreateNewFolder, contentDescription = "New folder")
+                    }
                     IconButton(onClick = { dirPickerLauncher.launch(null) }) {
                         Icon(Icons.Default.FolderOpen, contentDescription = "Choose directory")
                     }
@@ -75,7 +112,7 @@ fun FileBrowserScreen(
                 if (fileTree.isEmpty()) {
                     item {
                         Text(
-                            text = "No .md or .txt files found in selected directory.",
+                            text = "No supported files found in selected directory.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(16.dp)
@@ -86,7 +123,11 @@ fun FileBrowserScreen(
                         FileTreeItem(
                             file = file,
                             depth = 0,
-                            onOpenEditor = onOpenEditor
+                            onOpenEditor = onOpenEditor,
+                            onDelete = { viewModel.deleteFile(it) },
+                            onRename = { uri, name -> viewModel.renameFile(uri, name) },
+                            onMove = { src, dst -> viewModel.moveFile(src, dst) },
+                            directories = fileTree.filter { it.isDirectory },
                         )
                     }
                 }
@@ -128,22 +169,110 @@ private fun NoDirPlaceholder(modifier: Modifier = Modifier, onPickDirectory: () 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FileTreeItem(
     file: FileNode,
     depth: Int,
     onOpenEditor: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onRename: (String, String) -> Unit,
+    onMove: (String, String) -> Unit,
+    directories: List<FileNode>,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var showContextMenu by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var showMoveDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    // Rename dialog
+    if (showRenameDialog) {
+        var newName by remember { mutableStateOf(file.name) }
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename") },
+            text = {
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("New name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newName.isNotBlank()) {
+                        onRename(file.uriString, newName.trim())
+                        showRenameDialog = false
+                    }
+                }) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // Move dialog
+    if (showMoveDialog) {
+        AlertDialog(
+            onDismissRequest = { showMoveDialog = false },
+            title = { Text("Move to folder") },
+            text = {
+                Column {
+                    if (directories.isEmpty()) {
+                        Text("No folders available.")
+                    } else {
+                        directories.forEach { dir ->
+                            TextButton(onClick = {
+                                onMove(file.uriString, dir.uriString)
+                                showMoveDialog = false
+                            }) {
+                                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(dir.name)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMoveDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // Delete confirmation
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete") },
+            text = { Text("Delete \"${file.name}\"? This cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(file.uriString)
+                    showDeleteConfirm = false
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            },
+        )
+    }
 
     Column {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                    if (file.isDirectory) expanded = !expanded
-                    else onOpenEditor(file.uriString)
-                },
+                .combinedClickable(
+                    onClick = {
+                        if (file.isDirectory) expanded = !expanded
+                        else onOpenEditor(file.uriString)
+                    },
+                    onLongClick = { showContextMenu = true },
+                ),
             shape = RoundedCornerShape(8.dp),
             color = if (file.isDirectory)
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
@@ -165,6 +294,8 @@ private fun FileTreeItem(
                         file.isDirectory && expanded -> Icons.Default.FolderOpen
                         file.isDirectory -> Icons.Default.Folder
                         file.name.endsWith(".md") -> Icons.Default.Description
+                        file.name.endsWith(".json") -> Icons.Default.DataObject
+                        file.name.endsWith(".yaml") || file.name.endsWith(".yml") -> Icons.Default.Settings
                         else -> Icons.Default.Article
                     },
                     contentDescription = null,
@@ -183,13 +314,54 @@ private fun FileTreeItem(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                if (file.isDirectory) {
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(18.dp)
-                    )
+
+                // Context menu
+                Box {
+                    if (file.isDirectory) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showContextMenu,
+                        onDismissRequest = { showContextMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Rename") },
+                            onClick = {
+                                showContextMenu = false
+                                showRenameDialog = true
+                            },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        )
+                        if (!file.isDirectory) {
+                            DropdownMenuItem(
+                                text = { Text("Move to…") },
+                                onClick = {
+                                    showContextMenu = false
+                                    showMoveDialog = true
+                                },
+                                leadingIcon = { Icon(Icons.Default.DriveFileMove, contentDescription = null) },
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("Delete") },
+                            onClick = {
+                                showContextMenu = false
+                                showDeleteConfirm = true
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -198,7 +370,11 @@ private fun FileTreeItem(
                 FileTreeItem(
                     file = child,
                     depth = depth + 1,
-                    onOpenEditor = onOpenEditor
+                    onOpenEditor = onOpenEditor,
+                    onDelete = onDelete,
+                    onRename = onRename,
+                    onMove = onMove,
+                    directories = file.children.filter { it.isDirectory },
                 )
             }
         }

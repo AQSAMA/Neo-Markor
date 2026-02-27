@@ -24,4 +24,20 @@ class FileBrowserViewModel(private val fileRepository: FileRepository) : ViewMod
     fun refresh() {
         viewModelScope.launch { fileRepository.refreshFileTree() }
     }
+
+    fun deleteFile(uriString: String) {
+        viewModelScope.launch { fileRepository.deleteFile(uriString) }
+    }
+
+    fun renameFile(uriString: String, newName: String) {
+        viewModelScope.launch { fileRepository.renameFile(uriString, newName) }
+    }
+
+    fun createFolder(name: String) {
+        viewModelScope.launch { fileRepository.createFolder(name) }
+    }
+
+    fun moveFile(sourceUri: String, targetDirUri: String) {
+        viewModelScope.launch { fileRepository.moveFile(sourceUri, targetDirUri) }
+    }
 }
