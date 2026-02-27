@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "neo_markor_prefs")
@@ -44,11 +45,8 @@ class StoragePreferences(private val context: Context) {
     }
 
     suspend fun isPinned(uriString: String): Boolean {
-        var pinned = false
-        context.dataStore.edit { prefs ->
-            pinned = uriString in (prefs[pinnedNotesKey] ?: emptySet())
-        }
-        return pinned
+        val prefs = context.dataStore.data.first()
+        return uriString in (prefs[pinnedNotesKey] ?: emptySet())
     }
 
     // ── Theme settings ──────────────────────────────────────────────────

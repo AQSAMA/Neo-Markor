@@ -297,6 +297,7 @@ class FileRepositoryImpl(
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
+        .replace("'", "&#39;")
 
     private fun findFileByName(nodes: List<FileNode>, target: String): String? {
         for (node in nodes) {

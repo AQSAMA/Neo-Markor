@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -72,8 +73,9 @@ class DashboardViewModel(
         viewModelScope.launch {
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             val dailyFileName = "$today.md"
-            // Search for existing daily note in the tree
-            val existing = flattenTree(recentFiles.value).find {
+            // Search the full file tree for an existing daily note
+            val allFiles = flattenTree(fileRepository.observeFileTree().first())
+            val existing = allFiles.find {
                 it.name.equals(dailyFileName, ignoreCase = true)
             }
             if (existing != null) {
