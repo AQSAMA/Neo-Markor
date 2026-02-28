@@ -29,6 +29,22 @@ class EditorViewModel(
     private val _isSaving = MutableStateFlow(false)
     val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
 
+    // ── Undo / Redo ─────────────────────────────────────────────────────
+
+    private val undoStack = ArrayDeque<String>(MAX_UNDO_STACK)
+    private val redoStack = ArrayDeque<String>(MAX_UNDO_STACK)
+
+    private val _canUndo = MutableStateFlow(false)
+    val canUndo: StateFlow<Boolean> = _canUndo.asStateFlow()
+
+    private val _canRedo = MutableStateFlow(false)
+    val canRedo: StateFlow<Boolean> = _canRedo.asStateFlow()
+
+    // ── Export ───────────────────────────────────────────────────────────
+
+    private val _exportHtml = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val exportHtml: MutableSharedFlow<String> = _exportHtml
+
     /** Only emitted by [onContentChanged]; drives debounced autosave. Overflow drops oldest so we always process the latest text. */
     private val _saveFlow = MutableSharedFlow<String>(
         extraBufferCapacity = 64,
@@ -69,8 +85,33 @@ class EditorViewModel(
     }
 
     fun onContentChanged(newContent: String) {
+        // Push current state to undo stack before changing
+        val old = _content.value
+        if (old != newContent) {
+            pushUndo(old)
+            redoStack.clear()
+            _canRedo.value = false
+        }
         _content.value = newContent
         if (!isNewNote) _saveFlow.tryEmit(newContent)
+    }
+
+    fun undo() {
+        if (undoStack.isEmpty()) return
+        redoStack.addLast(_content.value)
+        _content.value = undoStack.removeLast()
+        _canUndo.value = undoStack.isNotEmpty()
+        _canRedo.value = true
+        if (!isNewNote) _saveFlow.tryEmit(_content.value)
+    }
+
+    fun redo() {
+        if (redoStack.isEmpty()) return
+        undoStack.addLast(_content.value)
+        _content.value = redoStack.removeLast()
+        _canUndo.value = true
+        _canRedo.value = redoStack.isNotEmpty()
+        if (!isNewNote) _saveFlow.tryEmit(_content.value)
     }
 
     fun saveNow() {
@@ -85,6 +126,24 @@ class EditorViewModel(
         }
     }
 
+    /** Generates full HTML for the current content and emits it via [exportHtml]. */
+    fun requestExportHtml() {
+        val html = fileRepository.markdownToHtml(_content.value)
+        _exportHtml.tryEmit(html)
+    }
+
+    /** Returns the file extension (lowercase) for format-aware editor behavior. */
+    fun getFileExtension(): String {
+        val name = _fileName.value
+        return if (name.contains('.')) name.substringAfterLast('.').lowercase() else "md"
+    }
+
+    private fun pushUndo(text: String) {
+        if (undoStack.size >= MAX_UNDO_STACK) undoStack.removeFirst()
+        undoStack.addLast(text)
+        _canUndo.value = true
+    }
+
     private fun extractFileName(uriString: String): String = when {
         uriString.startsWith("content://") ->
             Uri.parse(uriString).lastPathSegment
@@ -92,5 +151,9 @@ class EditorViewModel(
                 ?.substringAfterLast(":")
                 ?: "File"
         else -> uriString.substringAfterLast("/")
+    }
+
+    companion object {
+        private const val MAX_UNDO_STACK = 50
     }
 }

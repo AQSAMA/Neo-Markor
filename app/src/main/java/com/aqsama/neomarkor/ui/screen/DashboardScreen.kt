@@ -1,7 +1,9 @@
 package com.aqsama.neomarkor.ui.screen
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,17 +24,20 @@ import com.aqsama.neomarkor.presentation.viewmodel.DashboardViewModel
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DashboardScreen(
     onOpenFileBrowser: () -> Unit,
     onOpenEditor: (String) -> Unit,
+    onOpenSettings: () -> Unit,
     viewModel: DashboardViewModel = koinViewModel(),
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val recentFiles by viewModel.recentFiles.collectAsState()
     val hasDirectory by viewModel.hasDirectory.collectAsState()
+    val pinnedNotes by viewModel.pinnedNotes.collectAsState()
+    val pinnedUris by viewModel.pinnedNoteUris.collectAsState()
 
     // Navigate to the editor whenever a new note is successfully created
     LaunchedEffect(Unit) {
@@ -47,7 +52,15 @@ fun DashboardScreen(
                 onOpenFileBrowser = {
                     scope.launch { drawerState.close() }
                     onOpenFileBrowser()
-                }
+                },
+                onOpenSettings = {
+                    scope.launch { drawerState.close() }
+                    onOpenSettings()
+                },
+                onOpenDailyNote = {
+                    scope.launch { drawerState.close() }
+                    viewModel.openDailyNote()
+                },
             )
         }
     ) {
@@ -96,33 +109,58 @@ fun DashboardScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item {
-                    Text(
-                        text = "Recent",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
                 if (!hasDirectory) {
                     item {
                         NoWorkspaceCard(onOpenFileBrowser = onOpenFileBrowser)
                     }
-                } else if (recentFiles.isEmpty()) {
+                } else {
+                    // ── Pinned Notes ────────────────────────────────────
+                    if (pinnedNotes.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Pinned",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                        items(pinnedNotes, key = { "pinned_${it.uriString}" }) { file ->
+                            RecentFileCard(
+                                file = file,
+                                isPinned = true,
+                                onClick = { onOpenEditor(file.uriString) },
+                                onLongClick = { viewModel.togglePin(file.uriString) },
+                            )
+                        }
+                    }
+
+                    // ── Recent Notes ────────────────────────────────────
                     item {
                         Text(
-                            text = "No files found in your workspace.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(8.dp)
+                            text = "Recent",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 8.dp)
                         )
                     }
-                } else {
-                    items(recentFiles) { file ->
-                        RecentFileCard(
-                            file = file,
-                            onClick = { onOpenEditor(file.uriString) }
-                        )
+                    if (recentFiles.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No files found in your workspace.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    } else {
+                        items(recentFiles, key = { "recent_${it.uriString}" }) { file ->
+                            RecentFileCard(
+                                file = file,
+                                isPinned = file.uriString in pinnedUris,
+                                onClick = { onOpenEditor(file.uriString) },
+                                onLongClick = { viewModel.togglePin(file.uriString) },
+                            )
+                        }
                     }
                 }
                 item { Spacer(modifier = Modifier.height(80.dp)) }
@@ -175,15 +213,21 @@ private fun NoWorkspaceCard(onOpenFileBrowser: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecentFileCard(
     file: FileNode,
+    isPinned: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -218,6 +262,15 @@ private fun RecentFileCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+            if (isPinned) {
+                Icon(
+                    Icons.Default.PushPin,
+                    contentDescription = "Pinned",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
             Icon(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
@@ -232,6 +285,8 @@ private fun RecentFileCard(
 private fun NeoMarkorDrawer(
     onCloseDraw: () -> Unit,
     onOpenFileBrowser: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenDailyNote: () -> Unit,
 ) {
     ModalDrawerSheet {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -266,16 +321,10 @@ private fun NeoMarkorDrawer(
                 onClick = onOpenFileBrowser
             )
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
-                label = { Text("Pinned Notes") },
-                selected = false,
-                onClick = {}
-            )
-            NavigationDrawerItem(
                 icon = { Icon(Icons.Default.Today, contentDescription = null) },
-                label = { Text("Daily Notes") },
+                label = { Text("Daily Note") },
                 selected = false,
-                onClick = {}
+                onClick = onOpenDailyNote
             )
             Spacer(modifier = Modifier.weight(1f))
             HorizontalDivider()
@@ -283,7 +332,7 @@ private fun NeoMarkorDrawer(
                 icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                 label = { Text("Settings") },
                 selected = false,
-                onClick = {}
+                onClick = onOpenSettings
             )
         }
     }
