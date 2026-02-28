@@ -1,5 +1,6 @@
 package com.aqsama.neomarkor.ui.screen
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,11 +17,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aqsama.neomarkor.domain.model.FileNode
+import com.aqsama.neomarkor.domain.model.Folder
 import com.aqsama.neomarkor.presentation.viewmodel.DashboardViewModel
+import com.aqsama.neomarkor.presentation.viewmodel.FolderViewModel
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
@@ -30,7 +34,9 @@ fun DashboardScreen(
     onOpenFileBrowser: () -> Unit,
     onOpenEditor: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenManageFolders: () -> Unit,
     viewModel: DashboardViewModel = koinViewModel(),
+    folderViewModel: FolderViewModel = koinViewModel(),
 ) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -38,6 +44,7 @@ fun DashboardScreen(
     val hasDirectory by viewModel.hasDirectory.collectAsState()
     val pinnedNotes by viewModel.pinnedNotes.collectAsState()
     val pinnedUris by viewModel.pinnedNoteUris.collectAsState()
+    val folders by folderViewModel.folders.collectAsState()
 
     // Navigate to the editor whenever a new note is successfully created
     LaunchedEffect(Unit) {
@@ -48,6 +55,8 @@ fun DashboardScreen(
         drawerState = drawerState,
         drawerContent = {
             NeoMarkorDrawer(
+                folders = folders,
+                folderViewModel = folderViewModel,
                 onCloseDraw = { scope.launch { drawerState.close() } },
                 onOpenFileBrowser = {
                     scope.launch { drawerState.close() }
@@ -61,6 +70,10 @@ fun DashboardScreen(
                     scope.launch { drawerState.close() }
                     viewModel.openDailyNote()
                 },
+                onOpenManageFolders = {
+                    scope.launch { drawerState.close() }
+                    onOpenManageFolders()
+                },
             )
         }
     ) {
@@ -69,7 +82,7 @@ fun DashboardScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            text = "Neo-Markor",
+                            text = "All notes",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -86,6 +99,9 @@ fun DashboardScreen(
                         IconButton(onClick = { }) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
                         }
+                        IconButton(onClick = { }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
@@ -93,13 +109,13 @@ fun DashboardScreen(
                 )
             },
             floatingActionButton = {
-                ExtendedFloatingActionButton(
+                FloatingActionButton(
                     onClick = { viewModel.createNewNote() },
-                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("Quick Note") },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
-                )
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = "Create new note")
+                }
             }
         ) { padding ->
             LazyColumn(
@@ -112,6 +128,31 @@ fun DashboardScreen(
                 if (!hasDirectory) {
                     item {
                         NoWorkspaceCard(onOpenFileBrowser = onOpenFileBrowser)
+                    }
+                } else if (recentFiles.isEmpty() && pinnedNotes.isEmpty()) {
+                    // Empty state: "No notes" prompt
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fillParentMaxHeight(0.7f),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "No notes",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Tap the Add button to create a note.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 } else {
                     // ── Pinned Notes ────────────────────────────────────
@@ -283,10 +324,13 @@ private fun RecentFileCard(
 
 @Composable
 private fun NeoMarkorDrawer(
+    folders: List<Folder>,
+    folderViewModel: FolderViewModel,
     onCloseDraw: () -> Unit,
     onOpenFileBrowser: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDailyNote: () -> Unit,
+    onOpenManageFolders: () -> Unit,
 ) {
     ModalDrawerSheet {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -301,39 +345,148 @@ private fun NeoMarkorDrawer(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                IconButton(onClick = onCloseDraw) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings")
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
+
+            // All notes
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                label = { Text("Dashboard") },
+                icon = { Icon(Icons.Default.NoteAlt, contentDescription = null) },
+                label = { Text("All notes") },
                 selected = true,
                 onClick = onCloseDraw
             )
+
+            // Trash
             NavigationDrawerItem(
-                icon = { Icon(Icons.Default.FolderOpen, contentDescription = null) },
-                label = { Text("File Browser") },
+                icon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                label = { Text("Trash") },
                 selected = false,
-                onClick = onOpenFileBrowser
+                onClick = onCloseDraw
             )
-            NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Today, contentDescription = null) },
-                label = { Text("Daily Note") },
-                selected = false,
-                onClick = onOpenDailyNote
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // Folders section header
+            Text(
+                text = "Folders",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
             )
+
+            // Folder list in drawer with expand/collapse
+            val rootFolders = folderViewModel.getRootFolders(folders)
+            rootFolders.forEach { folder ->
+                DrawerFolderItem(
+                    folder = folder,
+                    allFolders = folders,
+                    depth = 0,
+                    folderViewModel = folderViewModel,
+                    onClick = onCloseDraw,
+                )
+            }
+
             Spacer(modifier = Modifier.weight(1f))
-            HorizontalDivider()
-            NavigationDrawerItem(
-                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                label = { Text("Settings") },
-                selected = false,
-                onClick = onOpenSettings
-            )
+
+            // Manage Folders button
+            Button(
+                onClick = onOpenManageFolders,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
+            ) {
+                Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Manage Folders")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DrawerFolderItem(
+    folder: Folder,
+    allFolders: List<Folder>,
+    depth: Int,
+    folderViewModel: FolderViewModel,
+    onClick: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val children = folderViewModel.getChildFolders(folder.id, allFolders)
+    val hasChildren = children.isNotEmpty()
+    val noteCount = folderViewModel.countNotesInSubtree(folder.id, allFolders)
+
+    Column {
+        NavigationDrawerItem(
+            icon = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (hasChildren) {
+                        Icon(
+                            if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                            contentDescription = if (expanded) "Collapse" else "Expand",
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clickable { expanded = !expanded },
+                            tint = MaterialTheme.colorScheme.outline,
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Icon(
+                        Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = Color(folder.color),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            },
+            label = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        folder.name,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    // Note count badge
+                    Badge(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Text("$noteCount")
+                    }
+                }
+            },
+            selected = false,
+            onClick = onClick,
+            modifier = Modifier.padding(start = (depth * 16).dp),
+        )
+
+        // Expanded children
+        AnimatedVisibility(visible = expanded) {
+            Column {
+                children.forEach { child ->
+                    DrawerFolderItem(
+                        folder = child,
+                        allFolders = allFolders,
+                        depth = depth + 1,
+                        folderViewModel = folderViewModel,
+                        onClick = onClick,
+                    )
+                }
+            }
         }
     }
 }
