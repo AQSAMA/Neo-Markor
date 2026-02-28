@@ -122,6 +122,11 @@ class FolderViewModel(
     fun moveFolder(folderId: String, newParentId: String?) {
         viewModelScope.launch {
             val current = storagePreferences.getFolders()
+            // Prevent circular reference: don't move to own descendants
+            if (newParentId != null) {
+                val descendants = collectDescendantIds(folderId, current)
+                if (newParentId in descendants || newParentId == folderId) return@launch
+            }
             val siblings = current.filter { it.parentId == newParentId }
             val maxOrder = siblings.maxOfOrNull { it.order } ?: -1
             val updated = current.map {
@@ -134,6 +139,13 @@ class FolderViewModel(
     fun moveFolders(folderIds: Set<String>, newParentId: String?) {
         viewModelScope.launch {
             val current = storagePreferences.getFolders()
+            // Prevent circular reference: don't move into own descendants
+            if (newParentId != null) {
+                for (id in folderIds) {
+                    val descendants = collectDescendantIds(id, current)
+                    if (newParentId in descendants || newParentId == id) return@launch
+                }
+            }
             val siblings = current.filter { it.parentId == newParentId }
             var nextOrder = (siblings.maxOfOrNull { it.order } ?: -1) + 1
             val updated = current.map {
@@ -154,10 +166,12 @@ class FolderViewModel(
             val folder = current.find { it.id == folderId } ?: return@launch
             val siblings = current.filter { it.parentId == folder.parentId && it.id != folderId }
                 .sortedBy { it.order }
+            val totalCount = siblings.size + 1 // siblings + the moved folder
+            val clampedOrder = newOrder.coerceIn(0, siblings.size)
             val reordered = mutableListOf<Folder>()
             var index = 0
-            for (i in 0..siblings.size) {
-                if (i == newOrder) {
+            for (i in 0 until totalCount) {
+                if (i == clampedOrder) {
                     reordered.add(folder.copy(order = i))
                 } else if (index < siblings.size) {
                     reordered.add(siblings[index].copy(order = i))

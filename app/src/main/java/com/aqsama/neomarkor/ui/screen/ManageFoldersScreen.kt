@@ -371,7 +371,7 @@ private fun FolderTreeItem(
         }
 
         // Children (if expanded)
-        AnimatedVisibility(visible = expanded && !isEditMode || isEditMode) {
+        AnimatedVisibility(visible = expanded) {
             Column {
                 children.forEach { child ->
                     FolderTreeItem(

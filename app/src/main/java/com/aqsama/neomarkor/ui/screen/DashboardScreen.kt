@@ -147,7 +147,7 @@ fun DashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Tap the Add button to create a note.",
+                                    text = "Tap the button below to create a note.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -427,52 +427,53 @@ private fun DrawerFolderItem(
     val noteCount = folderViewModel.countNotesInSubtree(folder.id, allFolders)
 
     Column {
-        NavigationDrawerItem(
-            icon = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (hasChildren) {
-                        Icon(
-                            if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
-                            contentDescription = if (expanded) "Collapse" else "Expand",
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clickable { expanded = !expanded },
-                            tint = MaterialTheme.colorScheme.outline,
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                    Icon(
-                        Icons.Default.Folder,
-                        contentDescription = null,
-                        tint = Color(folder.color),
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            },
-            label = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(
+                    start = (16 + depth * 16).dp,
+                    end = 16.dp,
+                    top = 10.dp,
+                    bottom = 10.dp,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (hasChildren) {
+                IconButton(
+                    onClick = { expanded = !expanded },
+                    modifier = Modifier.size(24.dp),
                 ) {
-                    Text(
-                        folder.name,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    Icon(
+                        if (expanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.outline,
                     )
-                    // Note count badge
-                    Badge(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ) {
-                        Text("$noteCount")
-                    }
                 }
-            },
-            selected = false,
-            onClick = onClick,
-            modifier = Modifier.padding(start = (depth * 16).dp),
-        )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            Icon(
+                Icons.Default.Folder,
+                contentDescription = null,
+                tint = Color(folder.color),
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                folder.name,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            // Note count badge
+            Badge(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            ) {
+                Text("$noteCount")
+            }
+        }
 
         // Expanded children
         AnimatedVisibility(visible = expanded) {
