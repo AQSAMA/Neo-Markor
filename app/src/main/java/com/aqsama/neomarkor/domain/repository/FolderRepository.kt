@@ -16,9 +16,15 @@ interface FolderRepository {
 
     /**
      * Creates a new folder with the given name and color, under [parentId] (null = root).
+     * Optionally links the folder to a real filesystem directory via [uriString].
      * Returns the new folder's id.
      */
-    suspend fun createFolder(name: String, colorArgb: Int, parentId: String? = null): String
+    suspend fun createFolder(
+        name: String,
+        colorArgb: Int,
+        parentId: String? = null,
+        uriString: String? = null,
+    ): String
 
     /** Updates an existing folder's name and/or color. Null parameters are left unchanged. */
     suspend fun updateFolder(

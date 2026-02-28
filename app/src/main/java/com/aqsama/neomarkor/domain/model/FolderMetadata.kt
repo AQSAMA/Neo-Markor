@@ -25,4 +25,6 @@ data class FolderMetadata(
     val colorArgb: Int = FOLDER_PRESET_COLORS[0],
     val parentId: String? = null,
     val orderIndex: Int = 0,
+    /** URI of the linked real filesystem directory, if any. */
+    val uriString: String? = null,
 )

@@ -26,6 +26,7 @@ class FolderRepositoryImpl(
         name: String,
         colorArgb: Int,
         parentId: String?,
+        uriString: String?,
     ): String {
         val existing = prefs.observeFolderMetadataMap().first()
         val siblings = existing.values.filter { it.parentId == parentId }
@@ -35,6 +36,7 @@ class FolderRepositoryImpl(
             colorArgb = colorArgb,
             parentId = parentId,
             orderIndex = nextIndex,
+            uriString = uriString,
         )
         prefs.saveFolderMetadata(metadata)
         return metadata.id

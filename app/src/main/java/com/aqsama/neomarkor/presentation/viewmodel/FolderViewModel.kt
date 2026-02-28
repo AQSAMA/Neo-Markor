@@ -3,6 +3,7 @@ package com.aqsama.neomarkor.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aqsama.neomarkor.domain.model.FolderMetadata
+import com.aqsama.neomarkor.domain.model.FOLDER_PRESET_COLORS
 import com.aqsama.neomarkor.domain.repository.FolderRepository
 import com.aqsama.neomarkor.domain.repository.FileRepository
 import com.aqsama.neomarkor.domain.model.FileNode
@@ -88,6 +89,16 @@ class FolderViewModel(
                 )
             }.collect { state -> _uiState.value = state }
         }
+
+        // Auto-import real filesystem directories as virtual folders
+        viewModelScope.launch {
+            combine(
+                fileRepository.observeFileTree(),
+                folderRepository.observeFolders(),
+            ) { tree, folders -> Pair(tree, folders) }.collect { (tree, folders) ->
+                syncFilesystemDirectories(tree, folders)
+            }
+        }
     }
 
     fun toggleExpanded(id: String) {
@@ -117,7 +128,14 @@ class FolderViewModel(
 
     fun createFolder(name: String, colorArgb: Int, parentId: String? = null) {
         viewModelScope.launch {
-            folderRepository.createFolder(name, colorArgb, parentId)
+            // Find the parent folder's filesystem URI so we create the directory in the right place
+            val parentDirUri = if (parentId != null) {
+                _uiState.value.folders.find { it.id == parentId }?.uriString
+            } else null
+            // Create the real filesystem directory first
+            val realUri = fileRepository.createFolder(name, parentDirUri)
+            // Register as a virtual folder linked to the real directory
+            folderRepository.createFolder(name, colorArgb, parentId, realUri)
         }
     }
 
@@ -185,4 +203,60 @@ class FolderViewModel(
 
     private fun flattenNotes(nodes: List<FileNode>): List<FileNode> =
         nodes.flatMap { n -> if (n.isDirectory) flattenNotes(n.children) else listOf(n) }
+
+    /**
+     * Imports filesystem directories into the virtual folder list so that real folders in the
+     * chosen root directory appear automatically in the app's folder browser.
+     * Handles nested directories by processing them in BFS order within a single coroutine.
+     */
+    private fun syncFilesystemDirectories(
+        fileTree: List<FileNode>,
+        existingFolders: List<FolderMetadata>,
+    ) {
+        val existingUris = existingFolders.mapNotNull { it.uriString }.toSet()
+        // Collect new directories in parent-first order so children can resolve parent IDs
+        val toCreate = collectDirectoriesToSync(fileTree, existingUris)
+        if (toCreate.isEmpty()) return
+
+        // Build a URI→id map seeded from already-known folders
+        val knownUriToId = existingFolders
+            .mapNotNull { f -> f.uriString?.let { it to f.id } }
+            .toMap()
+            .toMutableMap()
+
+        // Single coroutine to avoid concurrent DataStore reads/writes
+        viewModelScope.launch {
+            toCreate.forEach { (dir, parentUri) ->
+                val parentId = parentUri?.let { knownUriToId[it] }
+                val newId = folderRepository.createFolder(
+                    name = dir.name,
+                    colorArgb = FOLDER_PRESET_COLORS[0],
+                    parentId = parentId,
+                    uriString = dir.uriString,
+                )
+                // Track so subsequent children can resolve this folder as their parent
+                knownUriToId[dir.uriString] = newId
+            }
+        }
+    }
+
+    /**
+     * Returns a flat list of (directory, parentUri) pairs for all directories not yet tracked,
+     * preserving parent-before-child ordering so IDs can be resolved incrementally.
+     */
+    private fun collectDirectoriesToSync(
+        nodes: List<FileNode>,
+        existingUris: Set<String>,
+        parentUri: String? = null,
+    ): List<Pair<FileNode, String?>> {
+        val result = mutableListOf<Pair<FileNode, String?>>()
+        nodes.filter { it.isDirectory }.forEach { dir ->
+            if (dir.uriString !in existingUris) {
+                result.add(dir to parentUri)
+            }
+            // Always recurse so we find new children under already-tracked parents
+            result.addAll(collectDirectoriesToSync(dir.children, existingUris, dir.uriString))
+        }
+        return result
+    }
 }
