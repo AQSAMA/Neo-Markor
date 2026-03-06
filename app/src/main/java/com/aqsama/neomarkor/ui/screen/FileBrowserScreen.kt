@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,12 +17,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aqsama.neomarkor.domain.model.FileNode
 import com.aqsama.neomarkor.presentation.viewmodel.FileBrowserViewModel
 import org.koin.androidx.compose.koinViewModel
+
+/** State representing a file currently being dragged. */
+private data class FileDragState(
+    val fileUri: String,
+    val fileName: String,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +48,14 @@ fun FileBrowserScreen(
     val directoryUri by viewModel.directoryUri.collectAsState()
 
     var showNewFolderDialog by remember { mutableStateOf(false) }
+
+    // Drag-and-drop state
+    var dragState by remember { mutableStateOf<FileDragState?>(null) }
+    var hoverDirUri by remember { mutableStateOf<String?>(null) }
+    // Non-state map to avoid unnecessary recompositions on position updates
+    val dirPositions = remember { mutableMapOf<String, Rect>() }
+
+    val allDirectories = remember(fileTree) { collectAllDirectories(fileTree) }
 
     val dirPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
@@ -119,7 +141,7 @@ fun FileBrowserScreen(
                         )
                     }
                 } else {
-                    items(fileTree) { file ->
+                    items(fileTree, key = { it.uriString }) { file ->
                         FileTreeItem(
                             file = file,
                             depth = 0,
@@ -127,7 +149,30 @@ fun FileBrowserScreen(
                             onDelete = { viewModel.deleteFile(it) },
                             onRename = { uri, name -> viewModel.renameFile(uri, name) },
                             onMove = { src, dst -> viewModel.moveFile(src, dst) },
-                            directories = fileTree.filter { it.isDirectory },
+                            allDirectories = allDirectories,
+                            dragState = dragState,
+                            hoverDirUri = hoverDirUri,
+                            onFileDragStart = { fileNode ->
+                                if (!fileNode.isDirectory) {
+                                    dragState = FileDragState(fileNode.uriString, fileNode.name)
+                                    hoverDirUri = null
+                                }
+                            },
+                            onDragUpdate = { globalOffset ->
+                                hoverDirUri = dirPositions.entries
+                                    .firstOrNull { (_, rect) -> rect.contains(globalOffset) }
+                                    ?.key
+                            },
+                            onFileDragEnd = {
+                                val srcUri = dragState?.fileUri
+                                val dstUri = hoverDirUri
+                                if (srcUri != null && dstUri != null) {
+                                    viewModel.moveFile(srcUri, dstUri)
+                                }
+                                dragState = null
+                                hoverDirUri = null
+                            },
+                            onRegisterDir = { uri, rect -> dirPositions[uri] = rect },
                         )
                     }
                 }
@@ -135,6 +180,13 @@ fun FileBrowserScreen(
         }
     }
 }
+
+/** Recursively collects all directory nodes from the file tree. */
+private fun collectAllDirectories(nodes: List<FileNode>): List<FileNode> =
+    nodes.flatMap { node ->
+        if (node.isDirectory) listOf(node) + collectAllDirectories(node.children)
+        else emptyList()
+    }
 
 @Composable
 private fun NoDirPlaceholder(modifier: Modifier = Modifier, onPickDirectory: () -> Unit) {
@@ -178,13 +230,22 @@ private fun FileTreeItem(
     onDelete: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onMove: (String, String) -> Unit,
-    directories: List<FileNode>,
+    allDirectories: List<FileNode>,
+    dragState: FileDragState?,
+    hoverDirUri: String?,
+    onFileDragStart: (FileNode) -> Unit,
+    onDragUpdate: (Offset) -> Unit,
+    onFileDragEnd: () -> Unit,
+    onRegisterDir: (String, Rect) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showContextMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    val isDraggingThis = dragState?.fileUri == file.uriString
+    val isDropTarget = file.isDirectory && hoverDirUri == file.uriString
 
     // Rename dialog
     if (showRenameDialog) {
@@ -214,17 +275,18 @@ private fun FileTreeItem(
         )
     }
 
-    // Move dialog
+    // Move dialog — shows all directories in the tree
     if (showMoveDialog) {
         AlertDialog(
             onDismissRequest = { showMoveDialog = false },
             title = { Text("Move to folder") },
             text = {
                 Column {
-                    if (directories.isEmpty()) {
-                        Text("No folders available.")
+                    val movableDirectories = allDirectories.filter { it.uriString != file.uriString }
+                    if (movableDirectories.isEmpty()) {
+                        Text("No folders available. Create a folder first.")
                     } else {
-                        directories.forEach { dir ->
+                        movableDirectories.forEach { dir ->
                             TextButton(onClick = {
                                 onMove(file.uriString, dir.uriString)
                                 showMoveDialog = false
@@ -266,29 +328,61 @@ private fun FileTreeItem(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(
-                    onClick = {
-                        if (file.isDirectory) expanded = !expanded
-                        else onOpenEditor(file.uriString)
-                    },
-                    onLongClick = { showContextMenu = true },
+                .then(
+                    if (file.isDirectory) {
+                        // Register bounds for drop-target detection and handle tap to expand
+                        Modifier
+                            .onGloballyPositioned { coords ->
+                                val pos = coords.positionInWindow()
+                                val sz = coords.size
+                                onRegisterDir(
+                                    file.uriString,
+                                    Rect(pos, Size(sz.width.toFloat(), sz.height.toFloat())),
+                                )
+                            }
+                            .combinedClickable(
+                                onClick = { expanded = !expanded },
+                                onLongClick = { showContextMenu = true },
+                            )
+                    } else {
+                        // Files open on tap
+                        Modifier.clickable { onOpenEditor(file.uriString) }
+                    }
                 ),
             shape = RoundedCornerShape(8.dp),
-            color = if (file.isDirectory)
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            else
-                MaterialTheme.colorScheme.surface,
+            color = when {
+                isDropTarget -> MaterialTheme.colorScheme.primaryContainer
+                file.isDirectory -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                else -> MaterialTheme.colorScheme.surface
+            },
         ) {
             Row(
                 modifier = Modifier
                     .padding(
                         start = (16 + depth * 16).dp,
-                        end = 16.dp,
+                        end = 8.dp,
                         top = 10.dp,
-                        bottom = 10.dp
-                    ),
-                verticalAlignment = Alignment.CenterVertically
+                        bottom = 10.dp,
+                    )
+                    .alpha(if (isDraggingThis) 0.35f else 1f),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Dedicated expand/collapse button for directories
+                if (file.isDirectory) {
+                    IconButton(
+                        onClick = { expanded = !expanded },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (expanded) "Collapse" else "Expand",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
                 Icon(
                     imageVector = when {
                         file.isDirectory && expanded -> Icons.Default.FolderOpen
@@ -299,11 +393,12 @@ private fun FileTreeItem(
                         else -> Icons.Default.Article
                     },
                     contentDescription = null,
-                    tint = if (file.isDirectory)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
+                    tint = when {
+                        isDropTarget -> MaterialTheme.colorScheme.onPrimaryContainer
+                        file.isDirectory -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(20.dp),
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
@@ -312,17 +407,62 @@ private fun FileTreeItem(
                     fontWeight = if (file.isDirectory) FontWeight.Medium else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
                 )
 
-                // Context menu
-                Box {
-                    if (file.isDirectory) {
+                // Drag handle — long-press to drag a file into a folder
+                if (!file.isDirectory) {
+                    var handleGlobalPos by remember { mutableStateOf(Offset.Zero) }
+                    var dragStartLocal by remember { mutableStateOf(Offset.Zero) }
+                    var dragAccumulated by remember { mutableStateOf(Offset.Zero) }
+
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .onGloballyPositioned { coords ->
+                                handleGlobalPos = coords.positionInWindow()
+                            }
+                            .pointerInput(file.uriString) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { localOffset ->
+                                        dragStartLocal = localOffset
+                                        dragAccumulated = Offset.Zero
+                                        onFileDragStart(file)
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        dragAccumulated += amount
+                                        onDragUpdate(handleGlobalPos + dragStartLocal + dragAccumulated)
+                                    },
+                                    onDragEnd = onFileDragEnd,
+                                    onDragCancel = onFileDragEnd,
+                                )
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Icon(
-                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
+                            Icons.Default.DragHandle,
+                            contentDescription = "Long-press to drag file to a folder",
+                            tint = if (isDraggingThis)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+
+                // Context menu button
+                Box {
+                    IconButton(
+                        onClick = { showContextMenu = true },
+                        modifier = Modifier.size(28.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "More options",
                             tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(18.dp),
                         )
                     }
                     DropdownMenu(
@@ -365,6 +505,8 @@ private fun FileTreeItem(
                 }
             }
         }
+
+        // Expanded children
         if (file.isDirectory && expanded) {
             file.children.forEach { child ->
                 FileTreeItem(
@@ -374,7 +516,13 @@ private fun FileTreeItem(
                     onDelete = onDelete,
                     onRename = onRename,
                     onMove = onMove,
-                    directories = file.children.filter { it.isDirectory },
+                    allDirectories = allDirectories,
+                    dragState = dragState,
+                    hoverDirUri = hoverDirUri,
+                    onFileDragStart = onFileDragStart,
+                    onDragUpdate = onDragUpdate,
+                    onFileDragEnd = onFileDragEnd,
+                    onRegisterDir = onRegisterDir,
                 )
             }
         }
