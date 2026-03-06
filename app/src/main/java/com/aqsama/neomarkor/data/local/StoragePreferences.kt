@@ -8,6 +8,9 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -22,6 +25,7 @@ class StoragePreferences(private val context: Context) {
     private val accentColorKey = intPreferencesKey("accent_color") // ARGB int
     private val cornerRadiusKey = floatPreferencesKey("corner_radius") // dp
     private val dynamicColorKey = booleanPreferencesKey("dynamic_color")
+    private val folderColorsKey = stringPreferencesKey("folder_colors_json")
 
     // ── Root directory ──────────────────────────────────────────────────
 
@@ -79,5 +83,46 @@ class StoragePreferences(private val context: Context) {
 
     suspend fun setDynamicColor(enabled: Boolean) {
         context.dataStore.edit { prefs -> prefs[dynamicColorKey] = enabled }
+    }
+
+    // ── Folder metadata ───────────────────────────────────────────────────
+
+    fun observeFolderColors(): Flow<Map<String, Int>> =
+        context.dataStore.data.map { prefs ->
+            decodeFolderColorMap(prefs[folderColorsKey])
+        }
+
+    suspend fun setFolderColor(uriString: String, argbColor: Int) {
+        context.dataStore.edit { prefs ->
+            val current = decodeFolderColorMap(prefs[folderColorsKey]).toMutableMap()
+            current[uriString] = argbColor
+            prefs[folderColorsKey] = encodeFolderColorMap(current)
+        }
+    }
+
+    suspend fun removeFolderColor(uriString: String) {
+        context.dataStore.edit { prefs ->
+            val current = decodeFolderColorMap(prefs[folderColorsKey]).toMutableMap()
+            current.remove(uriString)
+            prefs[folderColorsKey] = encodeFolderColorMap(current)
+        }
+    }
+
+    suspend fun removeFolderColors(uriStrings: Set<String>) {
+        context.dataStore.edit { prefs ->
+            val current = decodeFolderColorMap(prefs[folderColorsKey]).toMutableMap()
+            uriStrings.forEach { current.remove(it) }
+            prefs[folderColorsKey] = encodeFolderColorMap(current)
+        }
+    }
+
+    private fun encodeFolderColorMap(map: Map<String, Int>): String =
+        Json.encodeToString(MapSerializer(String.serializer(), Int.serializer()), map)
+
+    private fun decodeFolderColorMap(raw: String?): Map<String, Int> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            Json.decodeFromString(MapSerializer(String.serializer(), Int.serializer()), raw)
+        }.getOrDefault(emptyMap())
     }
 }

@@ -119,18 +119,7 @@ class FileRepositoryImpl(
                     ?: return@withContext null
                 val targetDir = DocumentFile.fromTreeUri(context, Uri.parse(targetDirectoryUriString))
                     ?: return@withContext null
-
-                val name = sourceDoc.name ?: return@withContext null
-                val mimeType = mimeTypeForFileName(name)
-                val newDoc = targetDir.createFile(mimeType, name) ?: return@withContext null
-
-                // Copy content
-                context.contentResolver.openInputStream(sourceDoc.uri)?.use { input ->
-                    context.contentResolver.openOutputStream(newDoc.uri, "wt")?.use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                // Delete original
+                val newDoc = copyDocument(sourceDoc, targetDir) ?: return@withContext null
                 sourceDoc.delete()
                 refreshFileTree()
                 newDoc.uri.toString()
@@ -319,6 +308,26 @@ class FileRepositoryImpl(
         val uri = Uri.parse(uriString)
         val rootDocument = DocumentFile.fromTreeUri(context, uri) ?: return emptyList()
         return buildChildren(rootDocument)
+    }
+
+    private fun copyDocument(source: DocumentFile, targetDir: DocumentFile): DocumentFile? {
+        val name = source.name ?: return null
+        return if (source.isDirectory) {
+            val newDir = targetDir.createDirectory(name) ?: return null
+            source.listFiles().forEach { child ->
+                copyDocument(child, newDir)
+            }
+            newDir
+        } else {
+            val mimeType = mimeTypeForFileName(name)
+            val newFile = targetDir.createFile(mimeType, name) ?: return null
+            context.contentResolver.openInputStream(source.uri)?.use { input ->
+                context.contentResolver.openOutputStream(newFile.uri, "wt")?.use { output ->
+                    input.copyTo(output)
+                }
+            }
+            newFile
+        }
     }
 
     private fun buildChildren(directory: DocumentFile): List<FileNode> =
