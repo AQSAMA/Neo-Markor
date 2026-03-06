@@ -3,6 +3,7 @@ package com.aqsama.neomarkor.data.repository
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.aqsama.neomarkor.data.local.StoragePreferences
 import com.aqsama.neomarkor.domain.model.FileNode
@@ -20,6 +21,7 @@ import okio.sink
 import okio.source
 
 private val SUPPORTED_EXTENSIONS = setOf("md", "txt", "json", "yaml", "yml", "todo.txt")
+private const val TAG = "FileRepositoryImpl"
 
 class FileRepositoryImpl(
     private val context: Context,
@@ -119,22 +121,12 @@ class FileRepositoryImpl(
                     ?: return@withContext null
                 val targetDir = DocumentFile.fromTreeUri(context, Uri.parse(targetDirectoryUriString))
                     ?: return@withContext null
-
-                val name = sourceDoc.name ?: return@withContext null
-                val mimeType = mimeTypeForFileName(name)
-                val newDoc = targetDir.createFile(mimeType, name) ?: return@withContext null
-
-                // Copy content
-                context.contentResolver.openInputStream(sourceDoc.uri)?.use { input ->
-                    context.contentResolver.openOutputStream(newDoc.uri, "wt")?.use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                // Delete original
+                val newDoc = copyDocument(sourceDoc, targetDir) ?: return@withContext null
                 sourceDoc.delete()
                 refreshFileTree()
                 newDoc.uri.toString()
-            } catch (_: Exception) {
+            } catch (exception: Exception) {
+                Log.w(TAG, "Failed to move document from $sourceUriString to $targetDirectoryUriString", exception)
                 null
             }
         }
@@ -319,6 +311,29 @@ class FileRepositoryImpl(
         val uri = Uri.parse(uriString)
         val rootDocument = DocumentFile.fromTreeUri(context, uri) ?: return emptyList()
         return buildChildren(rootDocument)
+    }
+
+    private fun copyDocument(source: DocumentFile, targetDir: DocumentFile): DocumentFile? {
+        val name = source.name ?: return null
+        return if (source.isDirectory) {
+            val newDir = targetDir.createDirectory(name) ?: return null
+            source.listFiles().forEach { child ->
+                if (copyDocument(child, newDir) == null) {
+                    Log.w(TAG, "Failed to copy child ${child.uri} into ${newDir.uri}")
+                    return null
+                }
+            }
+            newDir
+        } else {
+            val mimeType = mimeTypeForFileName(name)
+            val newFile = targetDir.createFile(mimeType, name) ?: return null
+            context.contentResolver.openInputStream(source.uri)?.use { input ->
+                context.contentResolver.openOutputStream(newFile.uri, "wt")?.use { output ->
+                    input.copyTo(output)
+                }
+            }
+            newFile
+        }
     }
 
     private fun buildChildren(directory: DocumentFile): List<FileNode> =

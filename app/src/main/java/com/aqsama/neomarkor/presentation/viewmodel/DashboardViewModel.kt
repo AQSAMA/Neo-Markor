@@ -24,6 +24,9 @@ class DashboardViewModel(
     private val storagePreferences: StoragePreferences,
 ) : ViewModel() {
 
+    val fileTree: StateFlow<List<FileNode>> = fileRepository.observeFileTree()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     /** Flat list of all leaf (non-directory) files sorted by last-modified descending, limited to 20. */
     val recentFiles: StateFlow<List<FileNode>> = fileRepository.observeFileTree()
         .map { tree ->
@@ -33,6 +36,10 @@ class DashboardViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val allNotes: StateFlow<List<FileNode>> = fileRepository.observeFileTree()
+        .map { tree -> flattenTree(tree).sortedByDescending { it.lastModified } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     val hasDirectory: StateFlow<Boolean> = fileRepository.observeDirectoryUri()
         .map { it != null }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
@@ -40,6 +47,18 @@ class DashboardViewModel(
     /** Set of pinned note URI strings. */
     val pinnedNoteUris: StateFlow<Set<String>> = storagePreferences.observePinnedNotes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    val folderColors: StateFlow<Map<String, Int>> = storagePreferences.observeFolderColors()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    val folders: StateFlow<List<FolderNodeUi>> = combine(
+        fileRepository.observeFileTree(),
+        folderColors,
+    ) { tree, colors ->
+        tree.filter { it.isDirectory }.map { directory ->
+            buildFolderNode(directory, null, colors)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Pinned notes as FileNode list (resolved from the tree). */
     val pinnedNotes: StateFlow<List<FileNode>> = combine(
@@ -94,8 +113,114 @@ class DashboardViewModel(
         viewModelScope.launch { storagePreferences.togglePin(uriString) }
     }
 
+    fun createFolder(name: String, parentUri: String?, color: Int?) {
+        viewModelScope.launch {
+            val uri = fileRepository.createFolder(folderName = name, parentUriString = parentUri)
+            if (uri != null && color != null) {
+                storagePreferences.setFolderColor(uri, color)
+            }
+        }
+    }
+
+    fun renameFolder(uri: String, newName: String) {
+        viewModelScope.launch {
+            val renamedUri = fileRepository.renameFile(uri, newName)
+            if (renamedUri != null && renamedUri != uri) {
+                val colors = folderColors.value
+                val existing = colors[uri]
+                if (existing != null) {
+                    storagePreferences.removeFolderColor(uri)
+                    storagePreferences.setFolderColor(renamedUri, existing)
+                }
+            } else if (renamedUri == null) {
+                // Keep metadata unchanged when rename fails.
+                return@launch
+            }
+        }
+    }
+
+    fun deleteFolders(uris: Set<String>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            uris.forEach { fileRepository.deleteFile(it) }
+            storagePreferences.removeFolderColors(uris)
+        }
+    }
+
+    fun moveFolders(uris: Set<String>, targetParentUri: String?) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            // Null target means "move to workspace root".
+            val destination = targetParentUri ?: fileRepository.observeDirectoryUri().first() ?: return@launch
+            val folderSnapshot = folders.value
+            uris.filter { source ->
+                source != destination && !isDescendant(source, destination, folderSnapshot)
+            }.forEach { source ->
+                fileRepository.moveFile(source, destination)
+            }
+        }
+    }
+
+    fun setFolderColor(uris: Set<String>, color: Int) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            uris.forEach { storagePreferences.setFolderColor(it, color) }
+        }
+    }
+
     private fun flattenTree(nodes: List<FileNode>): List<FileNode> =
         nodes.flatMap { node ->
             if (node.isDirectory) flattenTree(node.children) else listOf(node)
         }
+
+    private fun buildFolderNode(
+        directory: FileNode,
+        parentUri: String?,
+        colors: Map<String, Int>,
+    ): FolderNodeUi {
+        val childFolders = directory.children.filter { it.isDirectory }
+            .map { buildFolderNode(it, directory.uriString, colors) }
+        val noteCount = countDescendantNotes(directory)
+        return FolderNodeUi(
+            uri = directory.uriString,
+            parentUri = parentUri,
+            name = directory.name,
+            noteCount = noteCount,
+            colorArgb = colors[directory.uriString],
+            children = childFolders,
+        )
+    }
+
+    private fun countDescendantNotes(node: FileNode): Int =
+        node.children.sumOf { child ->
+            if (child.isDirectory) countDescendantNotes(child) else 1
+        }
+
+    private fun isDescendant(sourceUri: String, destinationUri: String, tree: List<FolderNodeUi>): Boolean {
+        val sourceNode = tree.findNode(sourceUri) ?: return false
+        return sourceNode.containsNode(destinationUri)
+    }
+}
+
+data class FolderNodeUi(
+    val uri: String,
+    val parentUri: String?,
+    val name: String,
+    val noteCount: Int,
+    val colorArgb: Int?,
+    val children: List<FolderNodeUi> = emptyList(),
+)
+
+private fun List<FolderNodeUi>.findNode(uri: String): FolderNodeUi? {
+    for (node in this) {
+        if (node.uri == uri) return node
+        val foundInChild = node.children.findNode(uri)
+        if (foundInChild != null) return foundInChild
+    }
+    return null
+}
+
+private fun FolderNodeUi.containsNode(uri: String): Boolean {
+    if (children.any { it.uri == uri }) return true
+    return children.any { it.containsNode(uri) }
 }
