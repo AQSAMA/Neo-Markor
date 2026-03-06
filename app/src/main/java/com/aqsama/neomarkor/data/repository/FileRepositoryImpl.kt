@@ -3,6 +3,7 @@ package com.aqsama.neomarkor.data.repository
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.aqsama.neomarkor.data.local.StoragePreferences
 import com.aqsama.neomarkor.domain.model.FileNode
@@ -20,6 +21,7 @@ import okio.sink
 import okio.source
 
 private val SUPPORTED_EXTENSIONS = setOf("md", "txt", "json", "yaml", "yml", "todo.txt")
+private const val TAG = "FileRepositoryImpl"
 
 class FileRepositoryImpl(
     private val context: Context,
@@ -123,7 +125,8 @@ class FileRepositoryImpl(
                 sourceDoc.delete()
                 refreshFileTree()
                 newDoc.uri.toString()
-            } catch (_: Exception) {
+            } catch (exception: Exception) {
+                Log.w(TAG, "Failed to move document from $sourceUriString to $targetDirectoryUriString", exception)
                 null
             }
         }
@@ -315,7 +318,10 @@ class FileRepositoryImpl(
         return if (source.isDirectory) {
             val newDir = targetDir.createDirectory(name) ?: return null
             source.listFiles().forEach { child ->
-                copyDocument(child, newDir)
+                if (copyDocument(child, newDir) == null) {
+                    Log.w(TAG, "Failed to copy child ${child.uri} into ${newDir.uri}")
+                    return null
+                }
             }
             newDir
         } else {

@@ -132,6 +132,9 @@ class DashboardViewModel(
                     storagePreferences.removeFolderColor(uri)
                     storagePreferences.setFolderColor(renamedUri, existing)
                 }
+            } else if (renamedUri == null) {
+                // Keep metadata unchanged when rename fails.
+                return@launch
             }
         }
     }
@@ -147,8 +150,12 @@ class DashboardViewModel(
     fun moveFolders(uris: Set<String>, targetParentUri: String?) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
+            // Null target means "move to workspace root".
             val destination = targetParentUri ?: fileRepository.observeDirectoryUri().first() ?: return@launch
-            uris.filter { it != destination }.forEach { source ->
+            val folderSnapshot = folders.value
+            uris.filter { source ->
+                source != destination && !isDescendant(source, destination, folderSnapshot)
+            }.forEach { source ->
                 fileRepository.moveFile(source, destination)
             }
         }
@@ -188,6 +195,11 @@ class DashboardViewModel(
         node.children.sumOf { child ->
             if (child.isDirectory) countDescendantNotes(child) else 1
         }
+
+    private fun isDescendant(sourceUri: String, destinationUri: String, tree: List<FolderNodeUi>): Boolean {
+        val sourceNode = tree.findNode(sourceUri) ?: return false
+        return sourceNode.containsNode(destinationUri)
+    }
 }
 
 data class FolderNodeUi(
@@ -198,3 +210,17 @@ data class FolderNodeUi(
     val colorArgb: Int?,
     val children: List<FolderNodeUi> = emptyList(),
 )
+
+private fun List<FolderNodeUi>.findNode(uri: String): FolderNodeUi? {
+    for (node in this) {
+        if (node.uri == uri) return node
+        val foundInChild = node.children.findNode(uri)
+        if (foundInChild != null) return foundInChild
+    }
+    return null
+}
+
+private fun FolderNodeUi.containsNode(uri: String): Boolean {
+    if (children.any { it.uri == uri }) return true
+    return children.any { it.containsNode(uri) }
+}

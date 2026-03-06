@@ -49,7 +49,6 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -166,9 +165,9 @@ fun DashboardScreen(
                             }
                         },
                         actions = {
-                            TextButton(onClick = {}) { Text("PDF+") }
-                            IconButton(onClick = {}) { Icon(Icons.Default.Search, contentDescription = "Search") }
-                            IconButton(onClick = {}) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
+                            TextButton(onClick = onOpenFileBrowser) { Text("Export") }
+                            IconButton(onClick = onOpenFileBrowser) { Icon(Icons.Default.Search, contentDescription = "Search") }
+                            IconButton(onClick = onOpenSettings) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = MaterialTheme.colorScheme.surface,
@@ -246,7 +245,7 @@ private fun NotesContent(
         item {
             Text("Folders", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(
-                text = "${folders.countAllFolders()} Folders, ${allNotes.size} notes",
+                text = "${folders.countTotalFolders()} Folders, ${allNotes.size} notes",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -321,7 +320,7 @@ private fun NotePreviewCard(note: FileNode, onClick: () -> Unit) {
             Text(note.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Rich preview available in editor (text, checkboxes, and images).",
+                text = "Size: ${note.sizeBytes} bytes",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -338,8 +337,8 @@ private fun NeoMarkorDrawer(
     val expandedState = remember { mutableStateMapOf<String, Boolean>() }
 
     ModalDrawerSheet(
-        drawerContainerColor = Color(0xFF1F1F1F),
-        drawerContentColor = Color(0xFFE3E3E3),
+        drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        drawerContentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(
             modifier = Modifier
@@ -358,8 +357,8 @@ private fun NeoMarkorDrawer(
             }
             DrawerStaticItem(label = "All notes")
             DrawerStaticItem(label = "Trash")
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFF373737))
-            Text("Folders", style = MaterialTheme.typography.labelLarge, color = Color(0xFFBDBDBD))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            Text("Folders", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(8.dp))
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(folders) { folder ->
@@ -471,8 +470,8 @@ private fun ManageFoldersScreen(
         FolderCreateDialog(
             onDismiss = { showCreateDialogForParent = null },
             onAdd = { name, color ->
-                val parent = showCreateDialogForParent!!.ifBlank { null }
-                onCreateFolder(name, parent, color)
+                val parentUri = showCreateDialogForParent?.ifBlank { null }
+                onCreateFolder(name, parentUri, color)
                 showCreateDialogForParent = null
             },
         )
@@ -561,7 +560,7 @@ private fun ManageFoldersScreen(
         modifier = Modifier
             .fillMaxSize()
             .zIndex(10f),
-        color = Color(0xFF090909),
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -599,7 +598,7 @@ private fun ManageFoldersScreen(
                         .padding(horizontal = 16.dp)
                         .weight(1f),
                     shape = RoundedCornerShape(26.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1E)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 ) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         itemsIndexed(rows, key = { _, row -> row.uri }) { index, row ->
@@ -608,7 +607,7 @@ private fun ManageFoldersScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(64.dp)
-                                    .pointerInput(editMode, selectedThis, row.uri, rows.size) {
+                                    .pointerInput(editMode, selectedThis, row.uri) {
                                         if (editMode && selectedThis) {
                                             detectDragGesturesAfterLongPress(
                                                 onDragStart = {
@@ -688,7 +687,7 @@ private fun ManageFoldersScreen(
                                     Icon(Icons.Default.DriveFileMove, contentDescription = "Reorder", tint = Color(0xFF8A8A8A))
                                 }
                             }
-                            Divider(color = Color(0xFF2F2F34), thickness = 0.8.dp)
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.8.dp)
                         }
                         item {
                             Row(
@@ -766,7 +765,7 @@ private fun FolderEditActionBar(
     Surface(
         tonalElevation = 4.dp,
         shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
-        color = Color(0xFF35353E),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp),
@@ -891,7 +890,7 @@ private fun List<FolderNodeUi>.flatten(): List<FolderNodeUi> = buildList {
     this@flatten.forEach(::addNode)
 }
 
-private fun List<FolderNodeUi>.countAllFolders(): Int = flatten().size
+private fun List<FolderNodeUi>.countTotalFolders(): Int = flatten().size
 
 private fun <T> MutableList<T>.move(from: Int, to: Int) {
     if (from == to) return
