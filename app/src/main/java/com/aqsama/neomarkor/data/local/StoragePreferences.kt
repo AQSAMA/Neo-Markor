@@ -8,13 +8,18 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.aqsama.neomarkor.domain.model.Folder
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 private val Context.dataStore by preferencesDataStore(name = "neo_markor_prefs")
 
 class StoragePreferences(private val context: Context) {
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     private val rootDirUriKey = stringPreferencesKey("root_dir_uri")
     private val pinnedNotesKey = stringSetPreferencesKey("pinned_notes")
@@ -22,6 +27,8 @@ class StoragePreferences(private val context: Context) {
     private val accentColorKey = intPreferencesKey("accent_color") // ARGB int
     private val cornerRadiusKey = floatPreferencesKey("corner_radius") // dp
     private val dynamicColorKey = booleanPreferencesKey("dynamic_color")
+    private val foldersKey = stringPreferencesKey("folders_json")
+    private val trashedNotesKey = stringSetPreferencesKey("trashed_notes")
 
     // ── Root directory ──────────────────────────────────────────────────
 
@@ -79,5 +86,60 @@ class StoragePreferences(private val context: Context) {
 
     suspend fun setDynamicColor(enabled: Boolean) {
         context.dataStore.edit { prefs -> prefs[dynamicColorKey] = enabled }
+    }
+
+    // ── Folder management ───────────────────────────────────────────────
+
+    fun observeFolders(): Flow<List<Folder>> =
+        context.dataStore.data.map { prefs ->
+            val raw = prefs[foldersKey]
+            if (raw.isNullOrBlank()) emptyList()
+            else try {
+                json.decodeFromString<List<Folder>>(raw)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+    suspend fun saveFolders(folders: List<Folder>) {
+        context.dataStore.edit { prefs ->
+            prefs[foldersKey] = json.encodeToString(folders)
+        }
+    }
+
+    suspend fun getFolders(): List<Folder> {
+        val prefs = context.dataStore.data.first()
+        val raw = prefs[foldersKey]
+        if (raw.isNullOrBlank()) return emptyList()
+        return try {
+            json.decodeFromString<List<Folder>>(raw)
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    // ── Trash management ────────────────────────────────────────────────
+
+    fun observeTrashedNotes(): Flow<Set<String>> =
+        context.dataStore.data.map { prefs -> prefs[trashedNotesKey] ?: emptySet() }
+
+    suspend fun moveToTrash(uriString: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[trashedNotesKey] ?: emptySet()
+            prefs[trashedNotesKey] = current + uriString
+        }
+    }
+
+    suspend fun restoreFromTrash(uriString: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[trashedNotesKey] ?: emptySet()
+            prefs[trashedNotesKey] = current - uriString
+        }
+    }
+
+    suspend fun clearTrash() {
+        context.dataStore.edit { prefs ->
+            prefs[trashedNotesKey] = emptySet()
+        }
     }
 }

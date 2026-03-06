@@ -6,6 +6,7 @@ import com.aqsama.neomarkor.domain.repository.FileRepository
 import com.aqsama.neomarkor.presentation.viewmodel.DashboardViewModel
 import com.aqsama.neomarkor.presentation.viewmodel.EditorViewModel
 import com.aqsama.neomarkor.presentation.viewmodel.FileBrowserViewModel
+import com.aqsama.neomarkor.presentation.viewmodel.FolderViewModel
 import com.aqsama.neomarkor.presentation.viewmodel.SettingsViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,4 +23,5 @@ val appModule = module {
     viewModel { DashboardViewModel(get(), get()) }
     viewModel { params -> EditorViewModel(params.get<String>(), get()) }
     viewModel { SettingsViewModel(get()) }
+    viewModel { FolderViewModel(get()) }
 }

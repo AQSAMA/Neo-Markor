@@ -8,12 +8,14 @@ import androidx.navigation.compose.composable
 import com.aqsama.neomarkor.ui.screen.DashboardScreen
 import com.aqsama.neomarkor.ui.screen.EditorScreen
 import com.aqsama.neomarkor.ui.screen.FileBrowserScreen
+import com.aqsama.neomarkor.ui.screen.ManageFoldersScreen
 import com.aqsama.neomarkor.ui.screen.SettingsScreen
 
 sealed class Screen(val route: String) {
     object Dashboard : Screen("dashboard")
     object FileBrowser : Screen("file_browser")
     object Settings : Screen("settings")
+    object ManageFolders : Screen("manage_folders")
     object Editor : Screen("editor/{filePath}") {
         /**
          * Encode [filePath] with URL-safe Base64 so that SAF content:// URIs —
@@ -43,6 +45,7 @@ fun NeoMarkorNavGraph(navController: NavHostController) {
                     navController.navigate(Screen.Editor.createRoute(filePath))
                 },
                 onOpenSettings = { navController.navigate(Screen.Settings.route) },
+                onOpenManageFolders = { navController.navigate(Screen.ManageFolders.route) },
             )
         }
         composable(Screen.FileBrowser.route) {
@@ -55,6 +58,11 @@ fun NeoMarkorNavGraph(navController: NavHostController) {
         }
         composable(Screen.Settings.route) {
             SettingsScreen(
+                onNavigateBack = { navController.popBackStack() },
+            )
+        }
+        composable(Screen.ManageFolders.route) {
+            ManageFoldersScreen(
                 onNavigateBack = { navController.popBackStack() },
             )
         }
